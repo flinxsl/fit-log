@@ -7,6 +7,8 @@ local.properties
 
 # Log/OS Files
 *.log
+.DS_Store
+*.swp
 
 # Android Studio generated files and folders
 captures/
@@ -14,21 +16,29 @@ captures/
 .cxx/
 *.aab
 *.apk
+*.ap_
+*.dex
 output-metadata.json
 
 # IntelliJ
 *.iml
 .idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
+.kotlin/
 
-# Keystore files
+# Signing: losing or leaking these means friends must reinstall to update
 *.jks
 *.keystore
+keystore.properties
+signing.properties
 
-# Google Services (e.g. APIs or Firebase)
-google-services.json
+# Python importer
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
 
-# Android Profiling
-*.hprof
+# --- Personal training data: stays on this machine, never pushed ---
+# The repo is public. text_log is the source of truth and out/ is derived
+# from it; both are backed up to the NAS instead of to git.
+/text_log
+/out/
