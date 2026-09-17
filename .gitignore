@@ -42,3 +42,6 @@ __pycache__/
 # from it; both are backed up to the NAS instead of to git.
 /text_log
 /out/
+
+# Seed data for debug builds only: personal, and never in a release APK
+/app/src/debug/assets/
