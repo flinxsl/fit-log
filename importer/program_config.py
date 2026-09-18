@@ -75,8 +75,7 @@ EXERCISES = [
 # possible and the reps are always written out explicitly in the log.
 # ---------------------------------------------------------------------------
 
-_MAIN_5x5 = ["squat", "bench", "row", "incline-bench", "feet-up-bench",
-             "pause-squat", "pause-bench", "pause-deadlift"]
+_MAIN_5x5 = ["squat", "bench", "row", "incline-bench", "feet-up-bench"]
 _ACCESSORY = ["curl", "skullcrusher", "barbell-curl", "dumbbell-curl", "hammer-curl"]
 _BODYWEIGHT = ["pull-up", "dips", "leg-raise", "knee-raise"]
 
@@ -88,7 +87,12 @@ for _era in ("stronglifts-5x5", "stronglifts-int"):
         PROGRAM[(_era, _ex)] = (3, 8)          # confirmed: accessories are 3x8
     for _ex in _BODYWEIGHT:
         PROGRAM[(_era, _ex)] = (3, None)       # AMRAP
-    PROGRAM[(_era, "plank")] = (1, None)       # one timed hold
+    PROGRAM[(_era, "plank")] = (3, None)       # three timed holds
+
+    # Pause work is heavy and low-rep, not 5x5. "P" is a paused rep.
+    PROGRAM[(_era, "pause-squat")] = (5, 3)
+    PROGRAM[(_era, "pause-bench")] = (5, 3)     # "P bench 185/175 3/2" proves 5 sets
+    PROGRAM[(_era, "pause-deadlift")] = (2, 3)
 
 # Deadlift is 1x5 in StrongLifts 5x5 and 5x5 in the Intermediate program.
 # This is what makes "Dead 155 x3" mean THREE SETS rather than three reps.
@@ -103,7 +107,9 @@ PROGRAM[("stronglifts-int", "overhead-press")] = (3, 5)
 # Set counts PROVEN by explicit count notation somewhere in the log. Anything
 # not listed here is an assumption and gets prescription.confidence="assumed".
 PROVEN_SET_COUNTS = {
-    "bench", "squat", "row", "incline-bench", "feet-up-bench", "pause-bench",
+    "bench", "squat", "row", "incline-bench", "feet-up-bench",
+    "pause-squat", "pause-bench", "pause-deadlift",   # confirmed by Scott
+    "plank",
     "curl", "barbell-curl", "dumbbell-curl",          # 3-set splits appear
     "pull-up", "dips", "leg-raise", "knee-raise",     # reps written out
 }

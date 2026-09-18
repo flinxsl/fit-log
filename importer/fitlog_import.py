@@ -561,9 +561,12 @@ def build_sets(ex_id: str, d: str, p: ParsedPayload) -> tuple[list[Set], str, in
     if metric == "time":
         if not p.performed:
             return [], "uniform", prog_sets, confidence
-        s = Set(i=1, load=Load("none"), durationSec=p.duration,
-                targetDurationSec=None, completed=True)
-        return [s], "uniform", 1, "certain"
+        # A bare number means every hold reached it, same convention as the
+        # bodyweight lifts: "Plank 85" is three holds of 85 seconds.
+        n = p.n_sets_override or prog_sets
+        out = [Set(i=k + 1, load=Load("none"), durationSec=p.duration,
+                   targetDurationSec=None, completed=True) for k in range(n)]
+        return out, "uniform", n, "certain"
 
     if not p.performed:
         return [], "uniform", prog_sets, confidence

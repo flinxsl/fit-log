@@ -373,6 +373,7 @@ private fun SetSheet(
     val set = entry.sets[setIndex]
     val target = set.targetReps
     var weight by remember { mutableStateOf(set.load.value ?: 0.0) }
+    var writeIn by remember { mutableStateOf(false) }
 
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
         Text(
@@ -397,7 +398,16 @@ private fun SetSheet(
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton("✗ failed", Failed) { onFail(null) }
         }
-        FlowReasons(onFail)
+        FlowReasons(onFail = onFail, onWriteIn = { writeIn = true })
+
+        if (writeIn) {
+            TextDialog(
+                title = "Why did the set fail?",
+                current = "",
+                onDismiss = { writeIn = false },
+                onSet = { r -> writeIn = false; onFail(r.trim().ifBlank { null }) },
+            )
+        }
 
         if (set.load.value != null) {
             Text("WEIGHT — this set and the rest", Modifier.padding(top = 22.dp),
@@ -413,13 +423,15 @@ private fun SetSheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FlowReasons(onFail: (String?) -> Unit) {
+private fun FlowReasons(onFail: (String?) -> Unit, onWriteIn: () -> Unit) {
     FlowRow(
         Modifier.padding(top = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         REASONS.forEach { r -> PillButton(r, TextSecondary) { onFail(r) } }
+        // The presets come from the real log, but they will never cover everything.
+        PillButton("write in…", Accent, onWriteIn)
     }
 }
 
