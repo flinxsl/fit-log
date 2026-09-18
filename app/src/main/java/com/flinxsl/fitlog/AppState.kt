@@ -176,6 +176,37 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun failSet(ei: Int, si: Int, reason: String?) = edit { SessionEdit.fail(it, ei, si, reason) }
     fun setWeightFrom(ei: Int, si: Int, v: Double) = edit { SessionEdit.weightFrom(it, ei, si, v) }
 
+    /**
+     * Build sets for an entry the importer left empty, so it can be corrected.
+     * The starting load comes from the nearest earlier session of the same
+     * exercise, which is the best available guess at what was on the bar.
+     */
+    fun materializeSets(ei: Int) {
+        val s = draft ?: return
+        val e = s.entries.getOrNull(ei) ?: return
+        val ex = log.exercise(e.exerciseId)
+        val slot = slotFor(s, e.exerciseId)
+        val neighbour = Prefill.lastEntryBefore(log, e.exerciseId, e.track, s.date)
+
+        val count = when {
+            e.prescription.sets > 0 -> e.prescription.sets
+            slot != null -> slot.sets
+            else -> neighbour?.sets?.size ?: 3
+        }
+        val reps = e.prescription.reps ?: slot?.reps ?: neighbour?.sets?.firstOrNull()?.targetReps
+        val kind = e.prescription.loadKind.ifBlank { ex?.defaultLoadKind ?: LoadKind.BARBELL_TOTAL }
+        val seconds = if (ex?.metric == Metric.TIME) {
+            neighbour?.sets?.firstOrNull()?.durationSec ?: 30.0
+        } else null
+        val load = if (kind == LoadKind.BODYWEIGHT || seconds != null) null
+        else e.prescription.load ?: neighbour?.topLoad
+
+        edit {
+            SessionEdit.materialize(it, ei, count, reps, kind, load, log.settings.unit, seconds)
+        }
+        expanded = ei
+    }
+
     /** Switching track re-prescribes from that track's own history. */
     fun setTrack(index: Int, track: String) {
         val s = draft ?: return

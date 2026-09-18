@@ -93,7 +93,19 @@ object Prefill {
 
     /** The most recent time this exercise was done on this track. */
     fun lastEntry(log: FitLog, exerciseId: String, track: String?): Entry? =
-        log.sessions.sortedByDescending { it.date }
+        lastEntryBefore(log, exerciseId, track, null)
+
+    /**
+     * As lastEntry, but only considering sessions strictly before [before].
+     *
+     * Needed when filling in a session from 2025: the neighbour that tells you
+     * what you were lifting is the session before it, not the newest one in the
+     * log. Pass null for "no limit", which is the normal logging case.
+     */
+    fun lastEntryBefore(log: FitLog, exerciseId: String, track: String?, before: String?): Entry? =
+        log.sessions
+            .filter { before == null || it.date < before }
+            .sortedByDescending { it.date }
             .firstNotNullOfOrNull { s ->
                 s.entries.firstOrNull {
                     it.exerciseId == exerciseId && it.sets.isNotEmpty() &&

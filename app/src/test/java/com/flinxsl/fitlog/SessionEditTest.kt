@@ -174,6 +174,53 @@ class SessionEditTest {
         assertEquals(Attribution.POSITIONAL, s.entries[0].setsAttribution)
     }
 
+    // --- filling in an entry the importer left empty ------------------------
+
+    @Test
+    fun `an entry with no sets can be given sets to edit`() {
+        val empty = Session("t", "2025-12-15", entries = listOf(
+            Entry("bench", 1, sets = emptyList(), excludeFromPr = true,
+                prescription = Prescription(5, 5.0, LoadKind.BARBELL_TOTAL, null, "lb",
+                    origin = "import_config", confidence = "unknown"),
+                source = Source(line = 368, raw = "Bench 180/175 3(-1)/")),
+        ))
+        val out = SessionEdit.materialize(empty, 0, 5, 5.0, LoadKind.BARBELL_TOTAL, 180.0, "lb", null)
+        val e = out.entries[0]
+        assertEquals(5, e.sets.size)
+        assertEquals(listOf(5.0, 5.0, 5.0, 5.0, 5.0), e.sets.map { it.reps })
+        assertEquals(180.0, e.topLoad!!, 0.001)
+        assertEquals("Bench 180", Format.entry(e, bench))
+        // Filled in by hand, so no longer the importer's guess, and eligible for records.
+        assertEquals("manual", e.prescription.origin)
+        assertEquals("certain", e.prescription.confidence)
+        assertEquals(false, e.excludeFromPr)
+    }
+
+    @Test
+    fun `filling in never overwrites sets that already exist`() {
+        val o = prefilled()
+        val out = SessionEdit.materialize(o, 0, 3, 8.0, LoadKind.DUMBBELL_EACH, 25.0, "lb", null)
+        assertEquals(o.entries[0].sets, out.entries[0].sets)
+    }
+
+    @Test
+    fun `a timed entry fills in as holds, not reps`() {
+        val empty = Session("t", "2026-01-01", entries = listOf(Entry("plank", sets = emptyList())))
+        val out = SessionEdit.materialize(empty, 0, 3, null, LoadKind.TIME_ONLY, null, "lb", 80.0)
+        assertEquals(3, out.entries[0].sets.size)
+        assertEquals(80.0, out.entries[0].sets[0].durationSec!!, 0.001)
+        assertEquals(null, out.entries[0].sets[0].reps)
+    }
+
+    @Test
+    fun `a bodyweight entry fills in with no load`() {
+        val empty = Session("t", "2026-01-01", entries = listOf(Entry("dips", sets = emptyList())))
+        val out = SessionEdit.materialize(empty, 0, 3, 12.0, LoadKind.BODYWEIGHT, null, "lb", null)
+        assertEquals(3, out.entries[0].sets.size)
+        assertEquals(null, out.entries[0].sets[0].load.value)
+        assertEquals(LoadKind.BODYWEIGHT, out.entries[0].sets[0].load.kind)
+    }
+
     @Test
     fun `bodyweight sets have no target so they never read as short`() {
         val o = prefilled()

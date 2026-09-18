@@ -106,6 +106,7 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
                     onToggleSkip = { vm.setSkipped(i, e.performed) },
                     onTapSet = { si -> vm.tapSet(i, si) },
                     onHoldSet = { si -> setSheet = i to si },
+                    onMaterialize = { vm.materializeSets(i) },
                 )
             }
             item {
@@ -307,6 +308,7 @@ private fun ExerciseCard(
     onToggleSkip: () -> Unit,
     onTapSet: (Int) -> Unit,
     onHoldSet: (Int) -> Unit,
+    onMaterialize: () -> Unit,
 ) {
     val skipped = !entry.performed
     Surface(
@@ -347,7 +349,33 @@ private fun ExerciseCard(
                 }
             }
 
-            if (expanded && !skipped) {
+            if (expanded && !skipped && entry.sets.isEmpty()) {
+                // The importer leaves truncated and unquantified lines with no sets
+                // rather than inventing data, which also means there is nothing here
+                // to correct. Offer to build them.
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                    Text(
+                        "Nothing was recorded for this one. The original line was cut " +
+                            "off or had no numbers.",
+                        style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+                    )
+                    entry.source?.raw?.takeIf { it.isNotBlank() }?.let { raw ->
+                        Surface(
+                            color = Ink, shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) { Text(raw, Modifier.padding(10.dp), style = LogTextStyle, color = TextFaint) }
+                    }
+                    Button(
+                        onClick = onMaterialize,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent.copy(alpha = 0.2f), contentColor = Accent),
+                    ) { Text("FILL IN THE SETS", style = MaterialTheme.typography.titleMedium) }
+                }
+            }
+
+            if (expanded && !skipped && entry.sets.isNotEmpty()) {
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
                     if (exercise?.isTracked == true) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

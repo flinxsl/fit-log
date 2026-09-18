@@ -97,6 +97,40 @@ object SessionEdit {
         return topWeight(s, ei, maxOf(0.0, top + delta))
     }
 
+    /**
+     * Give an entry some sets to edit.
+     *
+     * The importer deliberately leaves truncated and unquantified lines with zero
+     * sets rather than inventing data - but that also means there is nothing on
+     * screen to correct. This builds the sets so they can be edited, using a
+     * starting load the caller worked out from the surrounding sessions.
+     */
+    fun materialize(
+        s: Session, ei: Int, count: Int, reps: Double?, loadKind: String,
+        load: Double?, unit: String, seconds: Double?,
+    ): Session = entry(s, ei) { e ->
+        if (e.sets.isNotEmpty()) e
+        else e.copy(
+            sets = (1..count.coerceAtLeast(1)).map { i ->
+                if (seconds != null) {
+                    SetRecord(i, Load(LoadKind.TIME_ONLY), durationSec = seconds, completed = true)
+                } else {
+                    SetRecord(
+                        i,
+                        if (load == null) Load(loadKind) else Load(loadKind, load, unit),
+                        reps = reps, targetReps = reps, completed = true,
+                    )
+                }
+            },
+            setsAttribution = Attribution.POSITIONAL,
+            // It is being filled in by hand now, so it is no longer the importer's guess.
+            prescription = e.prescription.copy(
+                sets = count, reps = reps, load = load, origin = "manual", confidence = "certain",
+            ),
+            excludeFromPr = false,
+        )
+    }
+
     fun skip(s: Session, ei: Int, skipped: Boolean, reason: String? = null): Session =
         entry(s, ei) { it.copy(performed = !skipped, failureReason = if (skipped) reason else null) }
 }

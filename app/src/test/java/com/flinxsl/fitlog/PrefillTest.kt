@@ -183,6 +183,20 @@ class PrefillTest {
     }
 
     @Test
+    fun `looking back before a date finds the neighbouring session, not the newest`() {
+        val log = logWith(
+            "2026-01-01" to Entry("squat", sets = (1..5).map { w(it, 180.0, 5.0) }),
+            "2026-02-01" to Entry("squat", sets = (1..5).map { w(it, 200.0, 5.0) }),
+            "2026-09-01" to Entry("squat", sets = (1..5).map { w(it, 260.0, 5.0) }),
+        )
+        // Filling in a gap in February should see January, not September.
+        val before = Prefill.lastEntryBefore(log, "squat", null, "2026-02-01")
+        assertEquals(180.0, before!!.topLoad!!, 0.001)
+        // With no limit it is the newest, which is the normal logging case.
+        assertEquals(260.0, Prefill.lastEntry(log, "squat", null)!!.topLoad!!, 0.001)
+    }
+
+    @Test
     fun `a first-ever exercise falls back to the bar`() {
         val e = Prefill.entry(FitLog(), barSlot("bench"), null)
         assertEquals(5, e.sets.size)
