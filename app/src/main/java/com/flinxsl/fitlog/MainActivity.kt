@@ -2,6 +2,7 @@ package com.flinxsl.fitlog
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -25,11 +26,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             FitlogTheme {
                 val vm: AppState = viewModel()
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    containerColor = Ink,
-                ) { innerPadding ->
-                    App(vm, Modifier.padding(innerPadding))
+                Scaffold(modifier = Modifier.fillMaxSize(), containerColor = Ink) { pad ->
+                    App(vm, Modifier.padding(pad))
                 }
             }
         }
@@ -44,6 +42,13 @@ fun App(vm: AppState, modifier: Modifier = Modifier) {
         }
         return
     }
-    // Read-only for now. Home, Session and the routine builder land next.
-    ScreenHistory(vm.log, vm.loadWarning, modifier)
+
+    // System back walks our own stack; falling through exits the app.
+    BackHandler(enabled = vm.screen != Screen.Home) { vm.back() }
+
+    when (vm.screen) {
+        Screen.Home -> ScreenHome(vm, modifier)
+        Screen.Session -> ScreenSession(vm, modifier)
+        Screen.History -> ScreenHistory(vm.log, vm.loadWarning, modifier)
+    }
 }

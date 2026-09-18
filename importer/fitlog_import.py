@@ -29,7 +29,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import program_config as cfg
 
-IMPORTER_VERSION = "1.0.0"
+IMPORTER_VERSION = "1.1.0"
+
+# A slot must appear in at least this share of the most recent sessions of its day
+# to be prescribed. Keeps retired movements out without hard-coding a cutoff date.
+ROUTINE_WINDOW = 10
+ROUTINE_MIN_SHARE = 0.5
 SCHEMA_VERSION = 1
 
 
@@ -1374,23 +1379,39 @@ def build_document(sessions, reviews, src_path: Path, raw: str, tracks):
             "loadKinds": kinds, "tracks": trk,
         })
 
+    # Routines drive what the app prescribes, so a slot must reflect what you
+    # CURRENTLY do. Taking the union of everything ever seen on a day label keeps
+    # retired movements forever: Curl was replaced by B curl and Hammer by D curl
+    # in Dec 2025, but both would still be prescribed today. Use recent frequency.
     routines = []
     for era in cfg.ERAS:
-        days = defaultdict(list)
-        for s in sessions:
-            if s.routineId != era["id"]:
+        days = {}
+        era_sessions = [s for s in sessions if s.routineId == era["id"]]
+        labels = sorted({(s.dayLabel or "-") for s in era_sessions})
+        for label in labels:
+            of_day = sorted([s for s in era_sessions if (s.dayLabel or "-") == label],
+                            key=lambda s: s.date)
+            recent = of_day[-ROUTINE_WINDOW:]
+            if not recent:
                 continue
-            key = s.dayLabel or "-"
-            for e in s.entries:
-                if e.exerciseId in [x["exerciseId"] for x in days[key]]:
-                    continue
-                sets_, reps_ = target_for(e.exerciseId, s.date)
-                days[key].append({
-                    "exerciseId": e.exerciseId, "sets": sets_, "reps": _num(reps_),
-                    "loadKind": load_kind_for(e.exerciseId, s.date),
+            seen = defaultdict(list)          # exercise -> positions it appeared at
+            for s in recent:
+                for e in s.entries:
+                    seen[e.exerciseId].append(e.order)
+            keep = [(ex_id, sorted(pos)[len(pos) // 2])
+                    for ex_id, pos in seen.items()
+                    if len(pos) / len(recent) >= ROUTINE_MIN_SHARE]
+            keep.sort(key=lambda t: t[1])     # median position in the session
+            slots = []
+            for ex_id, _ in keep:
+                sets_, reps_ = target_for(ex_id, recent[-1].date)
+                slots.append({
+                    "exerciseId": ex_id, "sets": sets_, "reps": _num(reps_),
+                    "loadKind": load_kind_for(ex_id, recent[-1].date),
                     "tracks": sorted({x.track for ss in sessions for x in ss.entries
-                                      if x.exerciseId == e.exerciseId and x.track}),
+                                      if x.exerciseId == ex_id and x.track}),
                 })
+            days[label] = slots
         routines.append({
             "id": era["id"], "name": era["id"],
             "activeFrom": era["from"], "activeTo": era["to"],
