@@ -51,6 +51,13 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var draft by mutableStateOf<Session?>(null)
         private set
 
+    /** The pristine prefill. Tapping a set down past zero wraps back to this. */
+    private var draftOriginal: Session? = null
+
+    /** Which exercise is open. Only ever one, so the list stays scannable. */
+    var expanded by mutableStateOf<Int?>(null)
+        private set
+
     init {
         log = store.load()
         loadWarning = store.loadWarning
@@ -79,12 +86,21 @@ class AppState(app: Application) : AndroidViewModel(app) {
         Prefill.currentRoutine(log)?.days?.map { it.label }?.filter { it != "-" } ?: emptyList()
 
     fun startSession(dayLabel: String, today: String = LocalDate.now().toString()) {
-        draft = Prefill.session(log, dayLabel, today)
+        val s = Prefill.session(log, dayLabel, today)
+        draft = s
+        draftOriginal = s
+        expanded = null
         go(Screen.Session)
+    }
+
+    fun toggleExpanded(index: Int) {
+        expanded = if (expanded == index) null else index
     }
 
     fun discardSession() {
         draft = null
+        draftOriginal = null
+        expanded = null
         back()
     }
 
@@ -93,37 +109,27 @@ class AppState(app: Application) : AndroidViewModel(app) {
         val s = draft ?: return
         update { it.copy(sessions = it.sessions + s) }
         draft = null
+        draftOriginal = null
+        expanded = null
         screen = Screen.Home
         backStack.clear()
     }
 
     // --- editing the draft --------------------------------------------------
 
-    private fun editEntry(index: Int, transform: (Entry) -> Entry) {
-        val s = draft ?: return
-        if (index !in s.entries.indices) return
-        draft = s.copy(entries = s.entries.toMutableList().also { it[index] = transform(it[index]) })
-    }
+    // Edits delegate to SessionEdit, which is pure and JVM-testable.
 
-    /** Set every set's load, keeping any per-set offsets from a drop scheme. */
-    fun setTopWeight(index: Int, value: Double) {
-        editEntry(index) { e ->
-            val top = e.topLoad ?: return@editEntry e
-            val shift = value - top
-            e.copy(
-                sets = e.sets.map { s ->
-                    s.load.value?.let { v -> s.copy(load = s.load.copy(value = maxOf(0.0, v + shift))) } ?: s
-                },
-                prescription = e.prescription.copy(load = value),
-            )
-        }
-    }
+    private fun edit(f: (Session) -> Session) { draft = draft?.let(f) }
 
-    fun nudgeWeight(index: Int, delta: Double) {
-        val e = draft?.entries?.getOrNull(index) ?: return
-        val top = e.topLoad ?: return
-        setTopWeight(index, maxOf(0.0, top + delta))
-    }
+    fun setTopWeight(index: Int, value: Double) = edit { SessionEdit.topWeight(it, index, value) }
+    fun nudgeWeight(index: Int, delta: Double) = edit { SessionEdit.nudge(it, index, delta) }
+    fun setSkipped(index: Int, skipped: Boolean, reason: String? = null) =
+        edit { SessionEdit.skip(it, index, skipped, reason) }
+    fun tapSet(ei: Int, si: Int) = edit { SessionEdit.tap(it, draftOriginal, ei, si) }
+    fun setReps(ei: Int, si: Int, reps: Double) = edit { SessionEdit.reps(it, ei, si, reps) }
+    fun setDuration(ei: Int, si: Int, sec: Double) = edit { SessionEdit.duration(it, ei, si, sec) }
+    fun failSet(ei: Int, si: Int, reason: String?) = edit { SessionEdit.fail(it, ei, si, reason) }
+    fun setWeightFrom(ei: Int, si: Int, v: Double) = edit { SessionEdit.weightFrom(it, ei, si, v) }
 
     /** Switching track re-prescribes from that track's own history. */
     fun setTrack(index: Int, track: String) {
@@ -134,8 +140,17 @@ class AppState(app: Application) : AndroidViewModel(app) {
         draft = s.copy(entries = s.entries.toMutableList().also { it[index] = fresh })
     }
 
-    fun setSkipped(index: Int, skipped: Boolean, reason: String? = null) {
-        editEntry(index) { it.copy(performed = !skipped, failureReason = if (skipped) reason else null) }
+    /** Confirm everything as prescribed, for anyone who prefers a positive tap. */
+    fun markAllAsPlanned() {
+        draft = draftOriginal?.copy(notes = draft?.notes ?: "")
+        expanded = null
+    }
+
+    /** True when nothing was touched, so FINISH can ask before inventing a workout. */
+    fun draftUntouched(): Boolean {
+        val a = draft ?: return true
+        val b = draftOriginal ?: return true
+        return a.entries == b.entries
     }
 
     fun setSessionNote(note: String) {

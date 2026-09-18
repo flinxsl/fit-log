@@ -41,7 +41,11 @@ object Prefill {
         val sets: List<SetRecord> = when {
             last == null -> firstTimeSets(slot, ex)
             else -> {
-                val base = last.sets
+                // Copy the LOADS verbatim, so a two-weight scheme reproduces itself,
+                // but propose a clean session: you plan to hit the target, not to
+                // repeat last week's misses. Carrying the shortfall forward would
+                // suggest "195 (-1)" as today's plan, which is nonsense.
+                val base = last.sets.map { planned(it) }
                 val bumped = if (wasComplete(last)) base.map { bump(it, slot, ex) } else base
                 resize(bumped, slot.sets)
             }
@@ -63,6 +67,19 @@ object Prefill {
             sets = sets.mapIndexed { i, s -> s.copy(i = i + 1) },
             setsAttribution = Attribution.POSITIONAL,
         )
+    }
+
+    /**
+     * Reset a recorded set to what you would intend to do again: full target reps,
+     * nothing failed. Loads and set count are kept. AMRAP sets have no target, so
+     * their reps carry over as the thing to beat.
+     */
+    private fun planned(s: SetRecord): SetRecord = when {
+        s.isTimed -> s.copy(failed = false, failureReason = null, completed = true)
+        s.targetReps != null -> s.copy(
+            reps = s.targetReps, completed = true, failed = false, failureReason = null,
+        )
+        else -> s.copy(failed = false, failureReason = null, completed = true)
     }
 
     /**

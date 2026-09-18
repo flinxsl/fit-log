@@ -149,6 +149,40 @@ class PrefillTest {
     }
 
     @Test
+    fun `last week's missed rep is not carried into today's plan`() {
+        val log = logWith("2026-09-01" to Entry("squat", sets = listOf(
+            w(1, 200.0, 5.0), w(2, 200.0, 5.0), w(3, 200.0, 5.0),
+            w(4, 200.0, 5.0), w(5, 200.0, 4.0))))
+        val e = Prefill.entry(log, barSlot(), null)
+        // Weight holds at 200 because the session was not clean, but the plan is
+        // a full 5x5 - you do not set out to miss a rep.
+        assertEquals(200.0, e.topLoad!!, 0.001)
+        assertEquals(listOf(5.0, 5.0, 5.0, 5.0, 5.0), e.sets.map { it.reps })
+        assertEquals("Squat 200", Format.entry(e, Exercise("squat", "Squat")))
+    }
+
+    @Test
+    fun `a failed set is not carried into today's plan either`() {
+        val log = logWith("2026-09-01" to Entry("squat", sets = listOf(
+            w(1, 200.0, 5.0), w(2, 200.0, 5.0),
+            SetRecord(3, Load(LoadKind.BARBELL_TOTAL, 200.0, "lb"), 0.0, 5.0,
+                completed = false, failed = true, failureReason = "back"))))
+        val e = Prefill.entry(log, barSlot(sets = 3), null)
+        assertTrue("nothing should arrive pre-failed", e.sets.none { it.failed })
+        assertEquals(listOf(5.0, 5.0, 5.0), e.sets.map { it.reps })
+    }
+
+    @Test
+    fun `a drop scheme still reproduces itself despite the rep reset`() {
+        val log = logWith("2026-09-01" to Entry("squat", sets = listOf(
+            w(1, 155.0, 5.0), w(2, 155.0, 5.0), w(3, 155.0, 4.0),
+            w(4, 145.0, 5.0), w(5, 145.0, 5.0))))
+        val e = Prefill.entry(log, barSlot(), null)
+        assertEquals(listOf(155.0, 155.0, 155.0, 145.0, 145.0), e.sets.map { it.load.value })
+        assertEquals(listOf(5.0, 5.0, 5.0, 5.0, 5.0), e.sets.map { it.reps })
+    }
+
+    @Test
     fun `a first-ever exercise falls back to the bar`() {
         val e = Prefill.entry(FitLog(), barSlot("bench"), null)
         assertEquals(5, e.sets.size)

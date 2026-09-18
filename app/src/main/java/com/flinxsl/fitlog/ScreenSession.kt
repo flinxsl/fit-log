@@ -2,18 +2,22 @@ package com.flinxsl.fitlog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,12 +25,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,15 +46,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.DisposableEffect
 import com.flinxsl.fitlog.ui.theme.Accent
 import com.flinxsl.fitlog.ui.theme.Done
 import com.flinxsl.fitlog.ui.theme.Failed
-import com.flinxsl.fitlog.ui.theme.FitlogTheme
 import com.flinxsl.fitlog.ui.theme.Ink
-import com.flinxsl.fitlog.ui.theme.Outline
+import com.flinxsl.fitlog.ui.theme.LogTextStyle
 import com.flinxsl.fitlog.ui.theme.Short
 import com.flinxsl.fitlog.ui.theme.Surface as SurfaceColor
 import com.flinxsl.fitlog.ui.theme.SurfaceHigh
@@ -54,20 +59,18 @@ import com.flinxsl.fitlog.ui.theme.TextFaint
 import com.flinxsl.fitlog.ui.theme.TextPrimary
 import com.flinxsl.fitlog.ui.theme.TextSecondary
 
-/**
- * Logging by exception: the whole session arrives pre-filled from what you
- * actually lifted last time, and a clean day is one tap on FINISH.
- *
- * Weight is always editable in place, never buried behind a menu, because the
- * real log shows constant backing off. Per-set rep deviations land next.
- */
+/** The reasons that actually appear in the log, so they are one tap rather than typing. */
+private val REASONS = listOf("back", "grip", "forearm", "shoulder", "knee")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
     val s = vm.draft ?: return
-    var editingWeight by remember { mutableStateOf<Int?>(null) }
+    var weightDialog by remember { mutableStateOf<Int?>(null) }
+    var setSheet by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var confirmFinish by remember { mutableStateOf(false) }
+    var noteDialog by remember { mutableStateOf(false) }
 
-    // The phone must not sleep between sets.
     val view = LocalView.current
     DisposableEffect(Unit) {
         view.keepScreenOn = true
@@ -75,7 +78,12 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
     }
 
     Column(modifier.fillMaxSize().background(Ink)) {
-        SessionTopBar(s, onBack = { vm.discardSession() })
+        SessionTopBar(
+            s,
+            onBack = { vm.discardSession() },
+            onAllAsPlanned = { vm.markAllAsPlanned() },
+            onNote = { noteDialog = true },
+        )
 
         LazyColumn(
             Modifier.weight(1f),
@@ -83,22 +91,26 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             itemsIndexed(s.entries, key = { _, e -> e.exerciseId }) { i, e ->
-                ExerciseRow(
+                ExerciseCard(
                     entry = e,
                     exercise = vm.log.exercise(e.exerciseId),
+                    expanded = vm.expanded == i,
                     increment = vm.increment(s, e),
+                    onToggle = { vm.toggleExpanded(i) },
                     onNudge = { d -> vm.nudgeWeight(i, d) },
-                    onTypeWeight = { editingWeight = i },
+                    onTypeWeight = { weightDialog = i },
                     onTrack = { t -> vm.setTrack(i, t) },
                     onToggleSkip = { vm.setSkipped(i, e.performed) },
+                    onTapSet = { si -> vm.tapSet(i, si) },
+                    onHoldSet = { si -> setSheet = i to si },
                 )
             }
             item {
                 Text(
-                    "Everything is pre-filled from last time. Adjust what changed, " +
-                        "then finish.",
+                    "Tap a set to take off a rep. Hold one for exact reps, a failed " +
+                        "set, or a weight change from there on.",
                     style = MaterialTheme.typography.bodyMedium, color = TextFaint,
-                    modifier = Modifier.padding(8.dp),
+                    modifier = Modifier.padding(10.dp),
                 )
             }
         }
@@ -113,26 +125,65 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
         }
     }
 
-    editingWeight?.let { i ->
-        WeightDialog(
+    weightDialog?.let { i ->
+        NumberDialog(
+            title = vm.log.exercise(s.entries[i].exerciseId)?.displayName ?: "",
             current = s.entries[i].topLoad ?: 0.0,
-            name = vm.log.exercise(s.entries[i].exerciseId)?.displayName ?: "",
-            onDismiss = { editingWeight = null },
-            onSet = { v -> vm.setTopWeight(i, v); editingWeight = null },
+            onDismiss = { weightDialog = null },
+            onSet = { v -> vm.setTopWeight(i, v); weightDialog = null },
         )
     }
 
+    if (noteDialog) {
+        TextDialog(
+            title = "Session note",
+            current = s.notes,
+            onDismiss = { noteDialog = false },
+            onSet = { vm.setSessionNote(it); noteDialog = false },
+        )
+    }
+
+    setSheet?.let { (ei, si) ->
+        val entry = s.entries[ei]
+        ModalBottomSheet(
+            onDismissRequest = { setSheet = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = SurfaceHigh,
+        ) {
+            SetSheet(
+                name = vm.log.exercise(entry.exerciseId)?.displayName ?: entry.exerciseId,
+                entry = entry,
+                setIndex = si,
+                step = vm.increment(s, entry),
+                onReps = { r -> vm.setReps(ei, si, r); setSheet = null },
+                onDuration = { d -> vm.setDuration(ei, si, d); setSheet = null },
+                onFail = { reason -> vm.failSet(ei, si, reason); setSheet = null },
+                onWeightFrom = { v -> vm.setWeightFrom(ei, si, v) },
+            )
+        }
+    }
+
     if (confirmFinish) {
+        val untouched = vm.draftUntouched()
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
             containerColor = SurfaceHigh,
-            title = { Text("Log this session?", color = TextPrimary) },
+            title = { Text(if (untouched) "Log all as planned?" else "Log this session?", color = TextPrimary) },
             text = {
-                Text(
-                    "${s.entries.count { it.performed }} exercises will be saved to " +
-                        Format.longDate(s.date) + ".",
-                    color = TextSecondary,
-                )
+                Column {
+                    if (untouched) {
+                        Text(
+                            "Nothing was changed, so every set will be recorded as completed.",
+                            color = TextSecondary,
+                        )
+                    }
+                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        s.entries.forEach {
+                            Text(Format.entry(it, vm.log.exercise(it.exerciseId)),
+                                style = LogTextStyle, color = TextSecondary)
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = { confirmFinish = false; vm.finishSession() }) {
@@ -147,57 +198,87 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SessionTopBar(s: Session, onBack: () -> Unit) {
+private fun SessionTopBar(s: Session, onBack: () -> Unit, onAllAsPlanned: () -> Unit, onNote: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().background(SurfaceColor).padding(horizontal = 12.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().background(SurfaceColor).padding(horizontal = 10.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
             Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = TextSecondary) }
-        Column {
-            Text("Day ${s.dayLabel ?: ""}",
-                style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-            Text(Format.longDate(s.date),
-                style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+
+        Column(Modifier.weight(1f).padding(start = 4.dp)) {
+            Text("Day ${s.dayLabel ?: ""}", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+            Text(
+                if (s.notes.isBlank()) Format.longDate(s.date) else "${Format.longDate(s.date)} · ${s.notes}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (s.notes.isBlank()) TextSecondary else Short,
+            )
+        }
+
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onNote),
+            contentAlignment = Alignment.Center,
+        ) { Text("✎", style = MaterialTheme.typography.titleMedium, color = TextSecondary) }
+
+        Surface(
+            color = Done.copy(alpha = 0.18f), shape = RoundedCornerShape(9.dp),
+            modifier = Modifier.clip(RoundedCornerShape(9.dp)).clickable(onClick = onAllAsPlanned),
+        ) {
+            Text(
+                "✓ ALL", Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                style = MaterialTheme.typography.labelLarge, color = Done, fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
 
 @Composable
-private fun ExerciseRow(
+private fun ExerciseCard(
     entry: Entry,
     exercise: Exercise?,
+    expanded: Boolean,
     increment: Double,
+    onToggle: () -> Unit,
     onNudge: (Double) -> Unit,
     onTypeWeight: () -> Unit,
     onTrack: (String) -> Unit,
     onToggleSkip: () -> Unit,
+    onTapSet: (Int) -> Unit,
+    onHoldSet: (Int) -> Unit,
 ) {
     val skipped = !entry.performed
     Surface(
-        color = if (skipped) SurfaceColor.copy(alpha = 0.5f) else SurfaceColor,
+        color = if (expanded) SurfaceHigh else SurfaceColor,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    exercise?.displayName ?: entry.exerciseId,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (skipped) TextFaint else TextPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    scheme(entry, exercise),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                )
+        Column {
+            // Collapsed head: reads as the log line it will become.
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        exercise?.displayName ?: entry.exerciseId,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (skipped) TextFaint else TextPrimary,
+                    )
+                    Text(
+                        payload(entry, exercise),
+                        style = LogTextStyle,
+                        color = when {
+                            skipped -> Failed
+                            entry.sets.any { it.failed } -> Failed
+                            entry.sets.any { !it.completed } -> Short
+                            else -> TextSecondary
+                        },
+                    )
+                }
                 Box(
-                    Modifier.padding(start = 10.dp).size(40.dp)
-                        .clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleSkip),
+                    Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleSkip),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(if (skipped) "↺" else "✕",
@@ -206,46 +287,196 @@ private fun ExerciseRow(
                 }
             }
 
-            if (exercise?.isTracked == true && !skipped) {
-                Row(
-                    Modifier.padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    exercise.tracks.forEach { t ->
-                        TrackChip(t, selected = entry.track == t) { onTrack(t) }
+            if (expanded && !skipped) {
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                    if (exercise?.isTracked == true) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            exercise.tracks.forEach { t ->
+                                TrackChip(t, entry.track == t) { onTrack(t) }
+                            }
+                        }
+                    }
+                    SetChips(entry, onTapSet, onHoldSet)
+                    if (entry.topLoad != null) {
+                        WeightStepper(
+                            value = entry.topLoad!!,
+                            unitLabel = Format.loadSuffix(
+                                entry.prescription.loadKind, entry.prescription.unit ?: "lb").trim(),
+                            step = increment,
+                            onNudge = onNudge,
+                            onType = onTypeWeight,
+                        )
                     }
                 }
             }
+        }
+    }
+}
 
-            if (!skipped && entry.topLoad != null) {
-                WeightStepper(
-                    value = entry.topLoad!!,
-                    unitLabel = Format.loadSuffix(entry.prescription.loadKind, entry.prescription.unit ?: "lb").trim(),
-                    step = increment,
-                    onNudge = onNudge,
-                    onType = onTypeWeight,
-                )
-            } else if (skipped) {
-                Text("Skipped", Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium, color = Failed)
-            } else {
-                Text(bodyweightSummary(entry), Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
+/**
+ * One chip per set. Weight is printed only when it differs from the chip before,
+ * so "190/185 3/2" reads as [5|190][5][5][5|185][5] with no extra chrome.
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun SetChips(entry: Entry, onTap: (Int) -> Unit, onHold: (Int) -> Unit) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        entry.sets.forEachIndexed { i, s ->
+            val prev = entry.sets.getOrNull(i - 1)
+            val showWeight = s.load.value != null && s.load.value != prev?.load?.value
+            val tint = when {
+                s.failed -> Failed
+                !s.completed -> Short
+                else -> Done
+            }
+            Surface(
+                color = tint.copy(alpha = 0.16f),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(width = 66.dp, height = 66.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .combinedClickable(onClick = { onTap(i) }, onLongClick = { onHold(i) }),
+            ) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        if (s.failed) "X" else if (s.isTimed) Format.num(s.durationSec) else Format.num(s.reps),
+                        style = MaterialTheme.typography.headlineMedium, color = tint,
+                    )
+                    if (showWeight) {
+                        Text(Format.num(s.load.value),
+                            style = MaterialTheme.typography.labelMedium, color = TextFaint)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
+private fun SetSheet(
+    name: String,
+    entry: Entry,
+    setIndex: Int,
+    step: Double,
+    onReps: (Double) -> Unit,
+    onDuration: (Double) -> Unit,
+    onFail: (String?) -> Unit,
+    onWeightFrom: (Double) -> Unit,
+) {
+    val set = entry.sets[setIndex]
+    val target = set.targetReps
+    var weight by remember { mutableStateOf(set.load.value ?: 0.0) }
+
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+        Text(
+            "$name · set ${setIndex + 1}" + (set.load.value?.let { " · ${Format.num(it)}" } ?: ""),
+            style = MaterialTheme.typography.titleLarge, color = TextPrimary,
+        )
+
+        if (set.isTimed) {
+            Text("SECONDS", Modifier.padding(top = 18.dp),
+                style = MaterialTheme.typography.labelMedium, color = TextFaint)
+            NumberRow((0..12).map { (set.durationSec ?: 0.0) - 6 + it }.filter { it >= 0 },
+                selected = set.durationSec, onPick = onDuration)
+        } else {
+            Text("REPS", Modifier.padding(top = 18.dp),
+                style = MaterialTheme.typography.labelMedium, color = TextFaint)
+            val top = (target ?: set.reps ?: 8.0).toInt() + 2
+            NumberRow((0..top).map { it.toDouble() }, selected = set.reps, target = target, onPick = onReps)
+        }
+
+        Text("FAILED THE SET", Modifier.padding(top = 22.dp),
+            style = MaterialTheme.typography.labelMedium, color = TextFaint)
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("✗ failed", Failed) { onFail(null) }
+        }
+        FlowReasons(onFail)
+
+        if (set.load.value != null) {
+            Text("WEIGHT — this set and the rest", Modifier.padding(top = 22.dp),
+                style = MaterialTheme.typography.labelMedium, color = TextFaint)
+            WeightStepper(
+                value = weight, unitLabel = "", step = step,
+                onNudge = { d -> weight = maxOf(0.0, weight + d); onWeightFrom(weight) },
+                onType = {},
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowReasons(onFail: (String?) -> Unit) {
+    FlowRow(
+        Modifier.padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        REASONS.forEach { r -> PillButton(r, TextSecondary) { onFail(r) } }
+    }
+}
+
+@Composable
+private fun NumberRow(
+    options: List<Double>,
+    selected: Double?,
+    target: Double? = null,
+    onPick: (Double) -> Unit,
+) {
+    androidx.compose.foundation.lazy.LazyRow(
+        Modifier.padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(options.size) { i ->
+            val v = options[i]
+            val isTarget = target != null && v == target
+            val isSel = selected != null && v == selected
+            Surface(
+                color = when {
+                    isSel -> Done.copy(alpha = 0.3f)
+                    isTarget -> Accent.copy(alpha = 0.18f)
+                    else -> SurfaceColor
+                },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(58.dp).clip(RoundedCornerShape(10.dp))
+                    .clickable { onPick(v) },
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(Format.num(v), style = MaterialTheme.typography.titleLarge,
+                        color = if (isSel) Done else TextPrimary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillButton(label: String, tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Surface(
+        color = tint.copy(alpha = 0.16f), shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
+    ) {
+        Text(label, Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge, color = tint)
+    }
+}
+
+@Composable
 private fun TrackChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        color = if (selected) Accent.copy(alpha = 0.25f) else SurfaceHigh,
+        color = if (selected) Accent.copy(alpha = 0.25f) else SurfaceColor,
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick),
     ) {
         Text(
-            label.uppercase(),
-            Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+            label.uppercase(), Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) Accent else TextFaint,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
@@ -253,7 +484,6 @@ private fun TrackChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Always visible, never behind a menu: minus, the number, plus. Tap the number to type. */
 @Composable
 private fun WeightStepper(
     value: Double,
@@ -263,18 +493,17 @@ private fun WeightStepper(
     onType: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 10.dp),
+        Modifier.fillMaxWidth().padding(top = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         StepButton("−${Format.num(step)}") { onNudge(-step) }
         Surface(
-            color = SurfaceHigh, shape = RoundedCornerShape(10.dp),
+            color = SurfaceColor, shape = RoundedCornerShape(10.dp),
             modifier = Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(onClick = onType),
         ) {
             Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(Format.num(value),
-                    style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+                Text(Format.num(value), style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
                 if (unitLabel.isNotBlank()) {
                     Text(unitLabel, style = MaterialTheme.typography.labelMedium, color = TextFaint)
                 }
@@ -286,8 +515,8 @@ private fun WeightStepper(
 
 @Composable
 private fun StepButton(label: String, onClick: () -> Unit) {
-    // fillMaxSize() here would expand to the whole Row and push the weight and the
-    // other button off screen: a Row child has no width constraint of its own.
+    // fillMaxSize() here would expand to the whole Row and push the other controls
+    // off screen: a Row child has no width constraint of its own.
     Surface(
         color = SurfaceHigh, shape = RoundedCornerShape(10.dp),
         modifier = Modifier.height(56.dp).widthIn(min = 76.dp)
@@ -300,12 +529,12 @@ private fun StepButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WeightDialog(current: Double, name: String, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
+private fun NumberDialog(title: String, current: Double, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
     var text by remember { mutableStateOf(Format.num(current)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceHigh,
-        title = { Text(name, color = TextPrimary) },
+        title = { Text(title, color = TextPrimary) },
         text = {
             OutlinedTextField(
                 value = text,
@@ -325,13 +554,29 @@ private fun WeightDialog(current: Double, name: String, onDismiss: () -> Unit, o
     )
 }
 
-private fun scheme(e: Entry, ex: Exercise?): String = when {
-    ex?.metric == Metric.TIME -> "hold"
-    e.prescription.reps == null -> "${e.sets.size} sets"
-    else -> "${e.sets.size}×${Format.num(e.prescription.reps)}"
+@Composable
+private fun TextDialog(title: String, current: String, onDismiss: () -> Unit, onSet: (String) -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceHigh,
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it }, singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSet(text) }) { Text("Set", color = Done, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) } },
+    )
 }
 
-private fun bodyweightSummary(e: Entry): String =
-    if (e.sets.isEmpty()) "—"
-    else if (e.sets.first().isTimed) "${Format.num(e.sets.first().durationSec)} seconds"
-    else e.sets.joinToString(" / ") { Format.num(it.reps) }
+/** The part of the log line after the exercise name. */
+private fun payload(e: Entry, ex: Exercise?): String {
+    val full = Format.entry(e, ex)
+    val name = ex?.displayName ?: e.exerciseId
+    return full.removePrefix(name).trim().ifBlank { "—" }
+}

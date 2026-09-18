@@ -38,7 +38,11 @@ object Format {
 
         if (!e.performed) {
             if (metric == Metric.TIME) return "$name no"
-            val head = e.prescription.load?.let { "$name ${num(it)} X" } ?: "$name X"
+            // Skipping keeps the sets, so fall back to them when the prescription
+            // has no load - "Feet up 155 X" records that you tried 155 and it did
+            // not happen, which is real information worth keeping.
+            val load = e.prescription.load ?: e.topLoad
+            val head = load?.let { "$name ${num(it)} X" } ?: "$name X"
             return head + (e.failureReason?.let { " $it" } ?: "")
         }
 
