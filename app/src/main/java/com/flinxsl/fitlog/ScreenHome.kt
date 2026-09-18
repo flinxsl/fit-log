@@ -93,6 +93,9 @@ fun ScreenHome(vm: AppState, modifier: Modifier = Modifier) {
             }
         }
 
+        item { NavRow("Routine", "${vm.routine()?.days?.size ?: 0} days") { vm.go(Screen.Routines) } }
+        item { NavRow("Settings", "export · import · units") { vm.go(Screen.Settings) } }
+
         if (vm.log.openReviewCount > 0) {
             item {
                 Text(
@@ -100,6 +103,22 @@ fun ScreenHome(vm: AppState, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodyMedium, color = Short,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun NavRow(title: String, detail: String, onClick: () -> Unit) {
+    Surface(
+        color = SurfaceColor, shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            Text("$detail  ›", style = MaterialTheme.typography.bodyMedium, color = TextFaint)
         }
     }
 }

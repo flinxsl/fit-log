@@ -46,9 +46,13 @@ fun App(vm: AppState, modifier: Modifier = Modifier) {
     // System back walks our own stack; falling through exits the app.
     BackHandler(enabled = vm.screen != Screen.Home) { vm.back() }
 
-    when (vm.screen) {
+    when (val screen = vm.screen) {
         Screen.Home -> ScreenHome(vm, modifier)
         Screen.Session -> ScreenSession(vm, modifier)
-        Screen.History -> ScreenHistory(vm.log, vm.loadWarning, modifier)
+        Screen.History -> ScreenHistory(vm.log, vm.loadWarning, { vm.back() }, modifier)
+        Screen.Routines -> ScreenRoutines(vm, modifier)
+        Screen.Settings -> ScreenSettings(vm, modifier)
+        is Screen.DayEditor -> ScreenDayEditor(vm, screen.label, modifier)
+        is Screen.ExerciseEditor -> ScreenExerciseEditor(vm, screen.label, screen.exerciseId, modifier)
     }
 }

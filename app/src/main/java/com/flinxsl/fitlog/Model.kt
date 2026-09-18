@@ -155,6 +155,15 @@ data class Slot(
     val reps: Double? = null,
     val loadKind: String = LoadKind.BARBELL_TOTAL,
     val tracks: List<String> = emptyList(),
+    /**
+     * How much to add after a clean session. Weight for loaded lifts, reps for
+     * bodyweight, seconds for a timed hold - one field, one meaning per kind.
+     * null means "use the sensible default for this load kind".
+     */
+    val increment: Double? = null,
+    val autoProgress: Boolean = true,
+    /** Used only when there is no history at all for this exercise. */
+    val startWeight: Double? = null,
 )
 
 // ---------------------------------------------------------------------------

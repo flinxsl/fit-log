@@ -46,7 +46,7 @@ object Prefill {
                 // repeat last week's misses. Carrying the shortfall forward would
                 // suggest "195 (-1)" as today's plan, which is nonsense.
                 val base = last.sets.map { planned(it) }
-                val bumped = if (wasComplete(last)) base.map { bump(it, slot, ex) } else base
+                val bumped = if (slot.autoProgress && wasComplete(last)) base.map { bump(it, slot, ex) } else base
                 resize(bumped, slot.sets)
             }
         }
@@ -135,7 +135,7 @@ object Prefill {
      * for bodyweight and seconds for a timed hold - one field, one meaning per
      * exercise kind, which is what the real log does.
      */
-    fun increment(slot: Slot, ex: Exercise?): Double = when (slot.loadKind) {
+    fun increment(slot: Slot, ex: Exercise?): Double = slot.increment ?: when (slot.loadKind) {
         LoadKind.BARBELL_TOTAL -> 5.0
         LoadKind.BAR_ADDED, LoadKind.DUMBBELL_EACH, LoadKind.BODYWEIGHT_PLUS -> 2.5
         else -> 1.0   // a rep, or a second
@@ -160,7 +160,7 @@ object Prefill {
                 kind == LoadKind.BODYWEIGHT ->
                     SetRecord(i, Load(LoadKind.BODYWEIGHT), reps = slot.reps, targetReps = slot.reps)
                 else -> SetRecord(
-                    i, Load(kind, 45.0, "lb"),
+                    i, Load(kind, slot.startWeight ?: 45.0, "lb"),
                     reps = slot.reps, targetReps = slot.reps,
                 )
             }

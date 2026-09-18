@@ -116,6 +116,9 @@ class Store(private val ctx: Context) {
         }
     }
 
+    /** Parse without touching disk, so a bad import cannot destroy the live file. */
+    fun parse(text: String): FitLog = json.decodeFromString<FitLog>(text)
+
     /** Serialised form, for the export flow and for `adb shell run-as ... cat`. */
     fun exportJson(log: FitLog): String = json.encodeToString(log)
 

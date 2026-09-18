@@ -13,6 +13,10 @@ sealed interface Screen {
     data object Home : Screen
     data object Session : Screen
     data object History : Screen
+    data object Routines : Screen
+    data object Settings : Screen
+    data class DayEditor(val label: String) : Screen
+    data class ExerciseEditor(val label: String, val exerciseId: String?) : Screen
 }
 
 /**
@@ -177,6 +181,122 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissWarning() { loadWarning = null }
+
+    // --- routine editing ----------------------------------------------------
+
+    /** The routine currently in force. All edits below apply to it. */
+    fun routine(): Routine? = Prefill.currentRoutine(log)
+
+    fun day(label: String): RoutineDay? = routine()?.days?.firstOrNull { it.label == label }
+
+    private fun editRoutine(f: (Routine) -> Routine) {
+        val r = routine() ?: return
+        update { l -> l.copy(routines = l.routines.map { if (it.id == r.id) f(it) else it }) }
+    }
+
+    private fun editDay(label: String, f: (RoutineDay) -> RoutineDay) {
+        editRoutine { r -> r.copy(days = r.days.map { if (it.label == label) f(it) else it }) }
+    }
+
+    fun addDay(label: String) {
+        val r = routine()
+        if (r == null) {
+            update { it.copy(routines = it.routines + Routine(
+                id = "routine-1", name = "My routine", activeFrom = LocalDate.now().toString(),
+                days = listOf(RoutineDay(label, label)))) }
+        } else {
+            editRoutine { it.copy(days = it.days + RoutineDay(label, label)) }
+        }
+    }
+
+    fun renameDay(label: String, newLabel: String, name: String) {
+        editDay(label) { it.copy(label = newLabel, name = name) }
+    }
+
+    fun deleteDay(label: String) {
+        editRoutine { r -> r.copy(days = r.days.filterNot { it.label == label }) }
+    }
+
+    /** Arrow buttons rather than drag: Compose has no first-party reorderable list. */
+    fun moveSlot(label: String, from: Int, to: Int) {
+        editDay(label) { d ->
+            if (from !in d.slots.indices || to !in d.slots.indices) d
+            else d.copy(slots = d.slots.toMutableList().also { it.add(to, it.removeAt(from)) })
+        }
+    }
+
+    fun deleteSlot(label: String, exerciseId: String) {
+        editDay(label) { d -> d.copy(slots = d.slots.filterNot { it.exerciseId == exerciseId }) }
+    }
+
+    /** Creates or updates both the catalog entry and the slot, in one save. */
+    fun saveExercise(
+        label: String, originalId: String?, displayName: String, metric: String,
+        loadKind: String, sets: Int, reps: Double?, tracked: Boolean,
+        increment: Double?, autoProgress: Boolean, startWeight: Double?,
+    ) {
+        val id = originalId ?: slugFor(displayName)
+        val tracks = if (tracked) listOf("heavy", "light") else emptyList()
+        update { l ->
+            val exists = l.exercises.any { it.id == id }
+            val catalog = if (exists) {
+                l.exercises.map {
+                    if (it.id == id) it.copy(displayName = displayName, metric = metric,
+                        defaultLoadKind = loadKind, tracks = tracks) else it
+                }
+            } else {
+                l.exercises + Exercise(id, displayName, metric = metric,
+                    defaultLoadKind = loadKind, tracks = tracks,
+                    firstSeen = LocalDate.now().toString())
+            }
+            val slot = Slot(id, sets, reps, loadKind, tracks, increment, autoProgress, startWeight)
+            val routines = l.routines.map { r ->
+                if (r.id != routine()?.id) r
+                else r.copy(days = r.days.map { d ->
+                    if (d.label != label) d
+                    else if (d.slots.any { it.exerciseId == id })
+                        d.copy(slots = d.slots.map { if (it.exerciseId == id) slot else it })
+                    else d.copy(slots = d.slots + slot)
+                })
+            }
+            l.copy(exercises = catalog, routines = routines)
+        }
+    }
+
+    private fun slugFor(name: String): String {
+        val base = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+            .ifBlank { "exercise" }
+        if (log.exercises.none { it.id == base }) return base
+        var n = 2
+        while (log.exercises.any { it.id == "$base-$n" }) n++
+        return "$base-$n"
+    }
+
+    // --- settings, export and import ----------------------------------------
+
+    fun setUnit(unit: String) = update { it.copy(settings = it.settings.copy(unit = unit)) }
+    fun setRestSeconds(sec: Int) = update { it.copy(settings = it.settings.copy(restSeconds = sec)) }
+
+    fun exportJson(): String = store.exportJson(log)
+    fun exportText(): String = store.exportText(log)
+
+    /**
+     * Replace everything from a file. Refuses rather than half-applying, and the
+     * previous state is still on disk as .bak either way.
+     */
+    fun importJson(text: String): String {
+        return try {
+            val parsed = store.parse(text)
+            if (parsed.sessions.isEmpty() && parsed.exercises.isEmpty()) {
+                "That file has no sessions or exercises in it. Nothing was changed."
+            } else {
+                update { parsed }
+                "Imported ${parsed.sessions.size} sessions and ${parsed.exercises.size} exercises."
+            }
+        } catch (e: Exception) {
+            "Could not read that file: ${e.message?.take(120)}. Nothing was changed."
+        }
+    }
 
     val storePath: String get() = store.path
 }

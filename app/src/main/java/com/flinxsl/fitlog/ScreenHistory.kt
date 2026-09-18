@@ -46,14 +46,14 @@ import java.time.LocalDate
  * write data.
  */
 @Composable
-fun ScreenHistory(log: FitLog, warning: String?, modifier: Modifier = Modifier) {
+fun ScreenHistory(log: FitLog, warning: String?, onBack: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val sessions = log.sessionsNewestFirst
     LazyColumn(
         modifier = modifier.fillMaxSize().background(Ink),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { HistoryHeader(log) }
+        item { HistoryHeader(log, onBack) }
         warning?.let { item { WarningBanner(it) } }
         items(sessions, key = { it.id }) { SessionCard(it, log) }
         if (sessions.isEmpty()) item { EmptyState() }
@@ -61,14 +61,14 @@ fun ScreenHistory(log: FitLog, warning: String?, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun HistoryHeader(log: FitLog) {
+private fun HistoryHeader(log: FitLog, onBack: (() -> Unit)?) {
     val entries = log.sessions.sumOf { it.entries.size }
     val sets = log.sessions.sumOf { s -> s.entries.sumOf { it.sets.size } }
     Column(Modifier.padding(bottom = 4.dp)) {
-        Text("History", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-        Text(
+        ScreenTitle(
+            "History",
             "${log.sessions.size} sessions · $entries exercises · $sets sets",
-            style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
+            onBack,
         )
         if (log.openReviewCount > 0) {
             Text(
