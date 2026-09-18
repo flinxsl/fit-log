@@ -175,6 +175,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun setDuration(ei: Int, si: Int, sec: Double) = edit { SessionEdit.duration(it, ei, si, sec) }
     fun failSet(ei: Int, si: Int, reason: String?) = edit { SessionEdit.fail(it, ei, si, reason) }
     fun setWeightFrom(ei: Int, si: Int, v: Double) = edit { SessionEdit.weightFrom(it, ei, si, v) }
+    fun setWeightAt(ei: Int, si: Int, v: Double) = edit { SessionEdit.weightAt(it, ei, si, v) }
 
     /**
      * Build sets for an entry the importer left empty, so it can be corrected.

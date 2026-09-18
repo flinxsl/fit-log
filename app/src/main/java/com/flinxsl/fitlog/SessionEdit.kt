@@ -79,6 +79,19 @@ object SessionEdit {
             )
         }
 
+    /**
+     * Change the load on exactly one set.
+     *
+     * Thirteen months of the real log contains no single mid-exercise change -
+     * every pattern in it ("155/145 3/2", "175/165/155 1/3/1") is a sequence of
+     * from-here-onward drops. This exists because a plan is not a straitjacket:
+     * one set on the wrong plates should be recordable as what happened.
+     */
+    fun weightAt(s: Session, ei: Int, si: Int, value: Double): Session =
+        set(s, ei, si) { x ->
+            if (x.load.value == null) x else x.copy(load = x.load.copy(value = value))
+        }
+
     /** Move every set's load, preserving the gaps in a drop scheme. */
     fun topWeight(s: Session, ei: Int, value: Double): Session =
         entry(s, ei) { e ->

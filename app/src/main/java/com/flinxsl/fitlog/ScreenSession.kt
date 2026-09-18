@@ -170,7 +170,9 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
                 onReps = { r -> vm.setReps(ei, si, r); setSheet = null },
                 onDuration = { d -> vm.setDuration(ei, si, d); setSheet = null },
                 onFail = { reason -> vm.failSet(ei, si, reason); setSheet = null },
-                onWeightFrom = { v -> vm.setWeightFrom(ei, si, v) },
+                onWeight = { v, rest ->
+                    if (rest) vm.setWeightFrom(ei, si, v) else vm.setWeightAt(ei, si, v)
+                },
             )
         }
     }
@@ -456,12 +458,16 @@ private fun SetSheet(
     onReps: (Double) -> Unit,
     onDuration: (Double) -> Unit,
     onFail: (String?) -> Unit,
-    onWeightFrom: (Double) -> Unit,
+    onWeight: (Double, Boolean) -> Unit,
 ) {
     val set = entry.sets[setIndex]
     val target = set.targetReps
     var weight by remember { mutableStateOf(set.load.value ?: 0.0) }
     var writeIn by remember { mutableStateOf(false) }
+    var typeWeight by remember { mutableStateOf(false) }
+    // The real log only ever drops from a set onward, so that is the default.
+    var applyToRest by remember { mutableStateOf(true) }
+    val lastSet = setIndex == entry.sets.lastIndex
 
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
         Text(
@@ -498,12 +504,34 @@ private fun SetSheet(
         }
 
         if (set.load.value != null) {
-            Text("WEIGHT — this set and the rest", Modifier.padding(top = 22.dp),
+            Text("WEIGHT", Modifier.padding(top = 22.dp),
                 style = MaterialTheme.typography.labelMedium, color = TextFaint)
+            if (!lastSet) {
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ScopePill("this set and the rest", applyToRest) { applyToRest = true }
+                    ScopePill("this set only", !applyToRest) { applyToRest = false }
+                }
+            }
             WeightStepper(
-                value = weight, unitLabel = "", step = step,
-                onNudge = { d -> weight = maxOf(0.0, weight + d); onWeightFrom(weight) },
-                onType = {},
+                value = weight,
+                unitLabel = Format.loadSuffix(
+                    entry.prescription.loadKind, entry.prescription.unit ?: "lb").trim(),
+                step = step,
+                onNudge = { d -> weight = maxOf(0.0, weight + d); onWeight(weight, applyToRest && !lastSet) },
+                onType = { typeWeight = true },
+            )
+        }
+
+        if (typeWeight) {
+            NumberDialog(
+                title = "Set ${setIndex + 1} weight",
+                current = weight,
+                onDismiss = { typeWeight = false },
+                onSet = { v ->
+                    typeWeight = false
+                    weight = v
+                    onWeight(v, applyToRest && !lastSet)
+                },
             )
         }
     }
@@ -565,6 +593,22 @@ private fun PillButton(label: String, tint: androidx.compose.ui.graphics.Color, 
     ) {
         Text(label, Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             style = MaterialTheme.typography.labelLarge, color = tint)
+    }
+}
+
+@Composable
+private fun ScopePill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) Accent.copy(alpha = 0.25f) else SurfaceColor,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
+    ) {
+        Text(
+            label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) Accent else TextFaint,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
     }
 }
 

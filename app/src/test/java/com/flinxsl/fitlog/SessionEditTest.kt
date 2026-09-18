@@ -146,6 +146,30 @@ class SessionEditTest {
     }
 
     @Test
+    fun `changing one set leaves the others alone`() {
+        val o = prefilled()
+        val s = SessionEdit.weightAt(o, 2, 2, 160.0)
+        assertEquals(listOf(170.0, 170.0, 160.0, 170.0, 170.0), s.entries[2].sets.map { it.load.value })
+        assertEquals("Row 170/160/170 2/1/2", Format.entry(s.entries[2], row))
+    }
+
+    @Test
+    fun `from-here and this-set-only differ where it matters`() {
+        val o = prefilled()
+        val rest = SessionEdit.weightFrom(o, 2, 3, 160.0).entries[2].sets.map { it.load.value }
+        val one = SessionEdit.weightAt(o, 2, 3, 160.0).entries[2].sets.map { it.load.value }
+        assertEquals(listOf(170.0, 170.0, 170.0, 160.0, 160.0), rest)
+        assertEquals(listOf(170.0, 170.0, 170.0, 160.0, 170.0), one)
+    }
+
+    @Test
+    fun `changing one bodyweight set is a no-op, there being no load`() {
+        val o = prefilled()
+        val s = SessionEdit.weightAt(o, 4, 0, 25.0)
+        assertEquals(o.entries[4].sets, s.entries[4].sets)
+    }
+
+    @Test
     fun `nudging the weight moves every set and keeps the gaps`() {
         val o = prefilled()
         var s = SessionEdit.weightFrom(o, 2, 3, 160.0)   // 170/160
