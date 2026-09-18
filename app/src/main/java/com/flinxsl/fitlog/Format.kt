@@ -143,6 +143,16 @@ object Format {
         else -> " $unit"
     }
 
+    /**
+     * "3:00", "0:45". Seconds are always two digits so the countdown does not
+     * jump width as it ticks down, which is distracting to watch mid-rest.
+     * A negative remainder clamps to 0:00 rather than printing "-0:-1".
+     */
+    fun clock(seconds: Int): String {
+        val s = maxOf(0, seconds)
+        return "${s / 60}:${"%02d".format(s % 60)}"
+    }
+
     /** "Wed 16 Sep 2026" */
     fun longDate(iso: String): String =
         LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault()))

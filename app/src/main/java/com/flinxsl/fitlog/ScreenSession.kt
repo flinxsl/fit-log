@@ -1,5 +1,8 @@
 package com.flinxsl.fitlog
 
+import android.content.Context
+import android.os.VibrationEffect
+import android.os.VibratorManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,11 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.flinxsl.fitlog.ui.theme.Accent
 import com.flinxsl.fitlog.ui.theme.Done
 import com.flinxsl.fitlog.ui.theme.Failed
@@ -77,6 +85,30 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
     DisposableEffect(Unit) {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
+    }
+
+    // The rest countdown. Keyed on the deadline, so starting, restarting or
+    // cancelling a rest cancels this coroutine: a cancelled rest can never
+    // reach the buzz below, which is what makes "stop" mean stop.
+    val ctx = LocalContext.current
+    var restLeft by remember { mutableStateOf(vm.restRemaining()) }
+    LaunchedEffect(vm.restEndsAt) {
+        if (vm.restEndsAt == null) {
+            restLeft = 0
+            return@LaunchedEffect
+        }
+        // Only buzz for a rest we actually watched run out. Without this, an
+        // activity rebuilt after the deadline had already passed would fire the
+        // alert the instant it came back, minutes late and for nothing.
+        var watched = false
+        while (true) {
+            restLeft = vm.restRemaining()
+            if (restLeft <= 0) break
+            watched = true
+            delay(200)
+        }
+        if (watched) buzz(ctx)
+        vm.stopRest()
     }
 
     Column(modifier.fillMaxSize().background(Ink)) {
@@ -119,14 +151,29 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
             }
         }
 
-        Button(
-            onClick = { confirmFinish = true },
-            modifier = Modifier.fillMaxWidth().padding(12.dp).height(62.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Done, contentColor = Ink),
+        if (vm.restEndsAt != null) {
+            RestStrip(restLeft, vm.restTotal, onAdd = { vm.addRest(30) }, onStop = { vm.stopRest() })
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(if (editing) "SAVE CHANGES" else "FINISH",
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            RestButton(
+                running = vm.restEndsAt != null,
+                full = vm.log.settings.restSeconds,
+                modifier = Modifier.weight(1f),
+                onClick = { vm.startRest() },
+            )
+            Button(
+                onClick = { confirmFinish = true },
+                modifier = Modifier.weight(1.25f).height(62.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Done, contentColor = Ink),
+            ) {
+                Text(if (editing) "SAVE" else "FINISH",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
         }
 
         if (editing) {
@@ -263,7 +310,7 @@ private fun SessionTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
+            Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = TextSecondary) }
 
@@ -281,7 +328,7 @@ private fun SessionTopBar(
         }
 
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onNote),
+            Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onNote),
             contentAlignment = Alignment.Center,
         ) { Text("✎", style = MaterialTheme.typography.titleMedium, color = TextSecondary) }
 
@@ -292,6 +339,84 @@ private fun SessionTopBar(
             Text(
                 "✓ ALL", Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                 style = MaterialTheme.typography.labelLarge, color = Done, fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+/**
+ * One buzz when the rest runs out.
+ *
+ * No notification channel, no foreground service and no AlarmManager. Those are
+ * what turn a rest timer into a week of work, and the screen is held on for as
+ * long as the session screen is up, so there is nothing to wake.
+ *
+ * The limitation that buys: this is only guaranteed while the app is alive. If
+ * Android reclaims the process the rest goes with it, silently. That is the
+ * right trade for a timer you are standing next to.
+ */
+private fun buzz(ctx: Context) {
+    val vibrator = ctx.getSystemService(VibratorManager::class.java)?.defaultVibrator ?: return
+    if (!vibrator.hasVibrator()) return
+    // Two pulses rather than one: a single buzz from a phone lying on a bench
+    // is easy to miss, and there is no sound to fall back on.
+    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 260, 140, 260), -1))
+}
+
+/**
+ * The running rest. The bar drains left to right, so the time left is legible
+ * from arm's length without reading the digits, and it turns amber for the last
+ * fifteen seconds - which is when it matters that you are about to be up.
+ */
+@Composable
+private fun RestStrip(remaining: Int, total: Int, onAdd: () -> Unit, onStop: () -> Unit) {
+    val fraction = if (total > 0) (remaining.toFloat() / total).coerceIn(0f, 1f) else 0f
+    val tint = if (remaining <= 15) Short else Accent
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(12.dp)).background(SurfaceColor),
+    ) {
+        Box(Modifier.fillMaxWidth(fraction).height(64.dp).background(tint.copy(alpha = 0.22f)))
+        Row(
+            Modifier.fillMaxWidth().height(64.dp).padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Monospaced so the digits do not shuffle sideways as they tick.
+            Text(Format.clock(remaining),
+                style = LogTextStyle.copy(fontSize = 30.sp, fontWeight = FontWeight.Bold), color = tint)
+            Text("REST", Modifier.padding(start = 12.dp),
+                style = MaterialTheme.typography.labelMedium, color = TextFaint)
+            Spacer(Modifier.weight(1f))
+            StripButton("+30", Accent, onAdd)
+            StripButton("✕", TextSecondary, onStop)
+        }
+    }
+}
+
+@Composable
+private fun StripButton(label: String, tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Box(
+        Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, style = MaterialTheme.typography.titleMedium, color = tint) }
+}
+
+/**
+ * Starts a rest, or restarts one already running - which is what you want when
+ * you finish the next set early. Stopping is the strip's job, not this one, so
+ * a mis-tap here never loses the count.
+ */
+@Composable
+private fun RestButton(running: Boolean, full: Int, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        color = Accent.copy(alpha = 0.18f), shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(62.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                if (running) "RESTART" else "REST ${Format.clock(full)}",
+                style = MaterialTheme.typography.titleMedium, color = Accent,
+                fontWeight = FontWeight.Bold,
             )
         }
     }
@@ -342,7 +467,7 @@ private fun ExerciseCard(
                     )
                 }
                 Box(
-                    Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleSkip),
+                    Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onToggleSkip),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(if (skipped) "↺" else "✕",
@@ -624,7 +749,7 @@ private fun PillButton(label: String, tint: androidx.compose.ui.graphics.Color, 
         color = tint.copy(alpha = 0.16f), shape = RoundedCornerShape(20.dp),
         modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
     ) {
-        Text(label, Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        Text(label, Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelLarge, color = tint)
     }
 }
@@ -637,7 +762,7 @@ private fun ScopePill(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
     ) {
         Text(
-            label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            label, Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelMedium,
             color = if (selected) Accent else TextFaint,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
@@ -653,7 +778,7 @@ private fun TrackChip(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick),
     ) {
         Text(
-            label.uppercase(), Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+            label.uppercase(), Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) Accent else TextFaint,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,

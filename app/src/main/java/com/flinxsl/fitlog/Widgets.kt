@@ -33,7 +33,7 @@ fun ScreenTitle(
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
             Box(
-                Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
+                Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = TextSecondary) }
         }

@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      This is the window Android paints BEFORE Compose has drawn anything, so it
+      is what a cold start looks like for a few hundred milliseconds.
 
-    <style name="Theme.Fitlog" parent="android:Theme.Material.Light.NoActionBar" />
+      The project wizard's default parent is Theme.Material.LIGHT, which meant a
+      white flash on every launch - unpleasant anywhere, and genuinely bad in a
+      dim gym at 6am. A dark parent plus a black windowBackground makes the
+      launch invisible: black window, then black app.
+
+      The bars are transparent because MainActivity calls enableEdgeToEdge();
+      the light* flags are false so the clock and gesture bar stay white on it.
+    -->
+    <style name="Theme.Fitlog" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:colorBackground">@color/ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

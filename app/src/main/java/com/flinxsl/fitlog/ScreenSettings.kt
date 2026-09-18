@@ -220,7 +220,7 @@ private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick),
     ) {
         Text(
-            label, Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            label, Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) Accent else TextFaint,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,

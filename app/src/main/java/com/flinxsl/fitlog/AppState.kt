@@ -1,6 +1,7 @@
 package com.flinxsl.fitlog
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -144,6 +145,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         draftOriginal = null
         editingId = null
         expanded = null
+        stopRest()
         back()
     }
 
@@ -156,12 +158,57 @@ class AppState(app: Application) : AndroidViewModel(app) {
         editingId = null
         draftOriginal = null
         expanded = null
+        stopRest()
         // Return to whatever opened this: Home for a new session, but Review or
         // History when correcting one, so you carry on where you left off.
         if (!back()) {
             screen = Screen.Home
             backStack.clear()
         }
+    }
+
+    // --- rest timer ---------------------------------------------------------
+
+    /**
+     * When the current rest ends, on the monotonic clock; null means no rest is
+     * running. This lives here rather than in the composable so that rotating
+     * the phone, or scrolling the list far enough to recycle the bar, does not
+     * silently restart the count.
+     *
+     * elapsedRealtime rather than currentTimeMillis because it cannot jump when
+     * the network corrects the wall clock, and because remaining time is then a
+     * function of the deadline rather than of how many ticks were delivered -
+     * so a dropped frame costs display smoothness, never accuracy.
+     */
+    var restEndsAt by mutableStateOf<Long?>(null)
+        private set
+
+    /** What this rest started from, so the progress bar has a denominator. */
+    var restTotal by mutableStateOf(0)
+        private set
+
+    fun startRest(seconds: Int = log.settings.restSeconds) {
+        restTotal = seconds
+        restEndsAt = SystemClock.elapsedRealtime() + seconds * 1000L
+    }
+
+    /** Extend without losing the time already served. */
+    fun addRest(seconds: Int) {
+        val end = restEndsAt ?: return
+        restTotal += seconds
+        restEndsAt = end + seconds * 1000L
+    }
+
+    fun stopRest() {
+        restEndsAt = null
+        restTotal = 0
+    }
+
+    /** Whole seconds left, rounded up so a fresh 3:00 reads as 3:00 for a full second. */
+    fun restRemaining(): Int {
+        val end = restEndsAt ?: return 0
+        val ms = end - SystemClock.elapsedRealtime()
+        return if (ms <= 0) 0 else ((ms + 999) / 1000).toInt()
     }
 
     // --- editing the draft --------------------------------------------------

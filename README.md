@@ -47,6 +47,60 @@ personal training data, so they live only on the machine that generates them,
 backed up separately. Everything here is the code that processes them; clone it
 and point the importer at your own log.
 
+## Building the app
+
+JDK 21 and the Android SDK. Gradle handles the rest.
+
+```sh
+./gradlew testDebugUnitTest     # 89 JVM tests: the parser's counterpart in Kotlin
+./gradlew installDebug          # build and push to a connected phone
+```
+
+Debug builds seed themselves from `app/src/debug/assets/fitlog.json` on first
+run, so there is something to look at. That directory is gitignored and debug
+only — a release build starts empty, and no personal data has ever been in an
+APK you could hand to someone.
+
+### Releases
+
+```sh
+./gradlew assembleRelease       # app/build/outputs/apk/release/app-release.apk
+```
+
+Two things to know before you hand that file to anyone.
+
+**Bump `versionCode` in `app/build.gradle.kts` every single time.** Android
+refuses to install an APK whose version code is not higher than the one already
+on the phone. The only way out of that is uninstalling, and uninstalling deletes
+that phone's `fitlog.json`.
+
+**The signing key is the part that cannot be replaced.** Android identifies an
+app by its key, not its name. Build the release with a different key and no
+existing install will accept the update — every friend has to uninstall, losing
+their log. The source here can always be rebuilt; the key cannot be regenerated.
+
+Signing is configured from `keystore.properties` at the repo root, which points
+at a keystore outside the repo entirely. Both are gitignored, and this repo is
+public. A fresh clone has neither, so `assembleRelease` there produces an
+unsigned APK rather than a build error.
+
+```
+keystore.properties           storeFile / storePassword / keyAlias / keyPassword
+~/keys/fit-log-release.jks    4096-bit RSA, 100 year validity
+```
+
+Keep a copy of both, together, somewhere that is not this machine.
+
+### Installing it for a friend
+
+Send them the APK. They will need to allow installs from whatever app they
+opened it with. On first run the app is empty: **Routines** to build their days,
+and that is the whole setup — nothing is shared between installs, so their log
+never touches yours.
+
+Tell them about **Settings → Export as JSON** before they log anything real.
+Uninstalling the app deletes its storage, and that export is the only backup.
+
 ## Running the importer
 
 Python 3.11+, standard library only. Nothing to install.

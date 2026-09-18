@@ -20,7 +20,7 @@ val Outline = Color(0xFF3A3A3A)
 
 val TextPrimary = Color(0xFFFFFFFF)
 val TextSecondary = Color(0xFFB4B4B4)
-val TextFaint = Color(0xFF7A7A7A)
+val TextFaint = Color(0xFF8E8E8E)   // 5.6:1 on a card; 7A7A7A was 4.3 and failed AA
 
 val Done = Color(0xFF00E5A0)         // hit the target
 val Short = Color(0xFFFFB300)        // fell short by some reps

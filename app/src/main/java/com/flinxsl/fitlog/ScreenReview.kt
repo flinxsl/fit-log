@@ -199,7 +199,7 @@ private fun Pill(label: String, tint: Color, bold: Boolean = false, onClick: () 
         modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
     ) {
         Text(
-            label, Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            label, Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelLarge, color = tint,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
         )

@@ -224,7 +224,7 @@ private fun IconBtn(
     onClick: () -> Unit,
 ) {
     Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -280,7 +280,7 @@ fun ScreenExerciseEditor(vm: AppState, label: String, exerciseId: String?, modif
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.back() },
+                    Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).clickable { vm.back() },
                     contentAlignment = Alignment.Center,
                 ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = TextSecondary) }
                 Text(if (existing == null) "New exercise" else "Exercise",
@@ -448,7 +448,7 @@ private fun Toggle(label: String, on: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             if (on) "✓ $label" else label,
-            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
             style = MaterialTheme.typography.labelLarge,
             color = if (on) Done else TextFaint,
         )

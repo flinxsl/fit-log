@@ -1,19 +1,27 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What leaves the phone, and to where.
+
+  device-transfer  is the local phone-to-phone copy when you set up a new
+                   device. fitlog.json comes with you, which is the whole
+                   point: uninstalling or replacing the phone otherwise
+                   destroys every session since the last export.
+
+  cloud-backup     is Google's servers. Excluded deliberately. This app has no
+                   accounts and no sync by design, and a training log is
+                   personal; Settings -> Export as JSON is the backup path, and
+                   it goes wherever you point it.
+
+  minSdk is 31, so this file is always the one in force and the legacy
+  fullBackupContent rules would never be read.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <include domain="file" path="." />
     </device-transfer>
-    -->
 </data-extraction-rules>

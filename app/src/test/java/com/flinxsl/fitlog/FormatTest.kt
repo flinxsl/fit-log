@@ -182,4 +182,22 @@ class FormatTest {
         assertEquals("5.5", Format.num(5.5))
         assertEquals("-1", Format.num(-1.0))
     }
+
+    @Test
+    fun `the rest clock always pads seconds to two digits`() {
+        assertEquals("3:00", Format.clock(180))
+        assertEquals("2:59", Format.clock(179))
+        assertEquals("1:05", Format.clock(65))
+        assertEquals("0:09", Format.clock(9))
+        assertEquals("0:00", Format.clock(0))
+        assertEquals("5:00", Format.clock(300))
+    }
+
+    @Test
+    fun `a rest clock that has run past zero reads zero, not a negative`() {
+        // restRemaining() clamps too, but the display must not be the only
+        // thing standing between a late frame and "-1:-1" on screen.
+        assertEquals("0:00", Format.clock(-1))
+        assertEquals("0:00", Format.clock(-90))
+    }
 }
