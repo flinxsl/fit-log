@@ -1,6 +1,7 @@
 package com.flinxsl.fitlog
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,7 +47,13 @@ import java.time.LocalDate
  * write data.
  */
 @Composable
-fun ScreenHistory(log: FitLog, warning: String?, onBack: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun ScreenHistory(
+    log: FitLog,
+    warning: String?,
+    onBack: (() -> Unit)? = null,
+    onEdit: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val sessions = log.sessionsNewestFirst
     LazyColumn(
         modifier = modifier.fillMaxSize().background(Ink),
@@ -55,7 +62,7 @@ fun ScreenHistory(log: FitLog, warning: String?, onBack: (() -> Unit)? = null, m
     ) {
         item { HistoryHeader(log, onBack) }
         warning?.let { item { WarningBanner(it) } }
-        items(sessions, key = { it.id }) { SessionCard(it, log) }
+        items(sessions, key = { it.id }) { SessionCard(it, log, onEdit) }
         if (sessions.isEmpty()) item { EmptyState() }
     }
 }
@@ -101,8 +108,14 @@ private fun EmptyState() {
 }
 
 @Composable
-private fun SessionCard(s: Session, log: FitLog) {
-    Surface(color = SurfaceColor, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+private fun SessionCard(s: Session, log: FitLog, onEdit: ((String) -> Unit)?) {
+    Surface(
+        color = SurfaceColor, shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().let {
+            if (onEdit == null) it
+            else it.clip(RoundedCornerShape(12.dp)).clickable { onEdit(s.id) }
+        },
+    ) {
         Column(Modifier.padding(14.dp)) {
             SessionHeaderRow(s)
             Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {

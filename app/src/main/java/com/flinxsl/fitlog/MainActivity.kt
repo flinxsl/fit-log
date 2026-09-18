@@ -49,7 +49,13 @@ fun App(vm: AppState, modifier: Modifier = Modifier) {
     when (val screen = vm.screen) {
         Screen.Home -> ScreenHome(vm, modifier)
         Screen.Session -> ScreenSession(vm, modifier)
-        Screen.History -> ScreenHistory(vm.log, vm.loadWarning, { vm.back() }, modifier)
+        Screen.History -> ScreenHistory(
+            vm.log, vm.loadWarning,
+            onBack = { vm.back() },
+            onEdit = { id -> vm.editSession(id) },
+            modifier = modifier,
+        )
+        Screen.Review -> ScreenReview(vm, modifier)
         Screen.Routines -> ScreenRoutines(vm, modifier)
         Screen.Settings -> ScreenSettings(vm, modifier)
         is Screen.DayEditor -> ScreenDayEditor(vm, screen.label, modifier)

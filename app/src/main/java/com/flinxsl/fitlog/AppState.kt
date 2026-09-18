@@ -15,6 +15,7 @@ sealed interface Screen {
     data object History : Screen
     data object Routines : Screen
     data object Settings : Screen
+    data object Review : Screen
     data class DayEditor(val label: String) : Screen
     data class ExerciseEditor(val label: String, val exerciseId: String?) : Screen
 }
@@ -55,8 +56,17 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var draft by mutableStateOf<Session?>(null)
         private set
 
-    /** The pristine prefill. Tapping a set down past zero wraps back to this. */
+    /** The pristine starting point. Tapping a set down past zero wraps back to this. */
     private var draftOriginal: Session? = null
+
+    /**
+     * Non-null when the draft is an EDIT of a session already in the log, rather
+     * than a new one. Editing a past session and resolving a flagged import are
+     * the same operation, so both load into the draft and reuse the whole
+     * session screen instead of needing a second editor.
+     */
+    var editingId by mutableStateOf<String?>(null)
+        private set
 
     /** Which exercise is open. Only ever one, so the list stays scannable. */
     var expanded by mutableStateOf<Int?>(null)
@@ -93,8 +103,36 @@ class AppState(app: Application) : AndroidViewModel(app) {
         val s = Prefill.session(log, dayLabel, today)
         draft = s
         draftOriginal = s
+        editingId = null
         expanded = null
         go(Screen.Session)
+    }
+
+    /** Open a session already in the log for correction. */
+    fun editSession(id: String) {
+        val s = log.sessions.firstOrNull { it.id == id } ?: return
+        draft = s
+        draftOriginal = s
+        editingId = id
+        expanded = null
+        go(Screen.Session)
+    }
+
+    /** Jump straight to whichever session a review item refers to. */
+    fun editSessionForLine(line: Int): Boolean {
+        val s = LogEdit.sessionForLine(log, line) ?: return false
+        editSession(s.id)
+        expanded = s.entries.indexOfFirst { it.source?.line == line }.takeIf { it >= 0 }
+        return true
+    }
+
+    fun deleteSession(id: String) {
+        update { LogEdit.deleteSession(it, id) }
+        draft = null
+        draftOriginal = null
+        editingId = null
+        screen = Screen.Home
+        backStack.clear()
     }
 
     fun toggleExpanded(index: Int) {
@@ -104,15 +142,18 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun discardSession() {
         draft = null
         draftOriginal = null
+        editingId = null
         expanded = null
         back()
     }
 
-    /** The only path by which a session enters the log. */
+    /** The only path by which a session enters or changes in the log. */
     fun finishSession() {
         val s = draft ?: return
-        update { it.copy(sessions = it.sessions + s) }
+        val id = editingId
+        update { LogEdit.upsertSession(it, s, id) }
         draft = null
+        editingId = null
         draftOriginal = null
         expanded = null
         screen = Screen.Home
@@ -276,6 +317,21 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun setUnit(unit: String) = update { it.copy(settings = it.settings.copy(unit = unit)) }
     fun setRestSeconds(sec: Int) = update { it.copy(settings = it.settings.copy(restSeconds = sec)) }
+
+    // --- import review queue ------------------------------------------------
+
+    fun openReviews(): List<ReviewItem> = log.review.filter { !it.resolved }
+        .sortedBy { listOf("error", "warn", "info").indexOf(it.severity) }
+
+    /**
+     * Record a decision. The importer already applied its best guess, so most
+     * options are a confirmation; the ones that change data say so explicitly.
+     * Resolved items are kept, not deleted - they are the record of which parts
+     * of this history were reconstructed rather than written down.
+     */
+    fun resolveReview(item: ReviewItem, optionId: String, note: String? = null) {
+        update { LogEdit.resolveReview(it, item, optionId, note, LocalDate.now().toString()) }
+    }
 
     fun exportJson(): String = store.exportJson(log)
     fun exportText(): String = store.exportText(log)

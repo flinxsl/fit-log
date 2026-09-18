@@ -70,6 +70,8 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
     var setSheet by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var confirmFinish by remember { mutableStateOf(false) }
     var noteDialog by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val editing = vm.editingId != null
 
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -80,6 +82,7 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().background(Ink)) {
         SessionTopBar(
             s,
+            editing = editing,
             onBack = { vm.discardSession() },
             onAllAsPlanned = { vm.markAllAsPlanned() },
             onNote = { noteDialog = true },
@@ -121,7 +124,15 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Done, contentColor = Ink),
         ) {
-            Text("FINISH", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (editing) "SAVE CHANGES" else "FINISH",
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+
+        if (editing) {
+            TextButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            ) { Text("Delete this session", color = Failed) }
         }
     }
 
@@ -163,15 +174,54 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
         }
     }
 
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = SurfaceHigh,
+            title = { Text("Delete this session?", color = TextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "${Format.longDate(s.date)} will be removed from your history. " +
+                            "Export first if you are not sure.",
+                        color = TextSecondary,
+                    )
+                    Column(Modifier.padding(top = 10.dp)) {
+                        s.entries.forEach {
+                            Text(Format.entry(it, vm.log.exercise(it.exerciseId)),
+                                style = LogTextStyle, color = TextFaint)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    vm.editingId?.let { vm.deleteSession(it) }
+                }) { Text("Delete", color = Failed, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel", color = TextSecondary) }
+            },
+        )
+    }
+
     if (confirmFinish) {
         val untouched = vm.draftUntouched()
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
             containerColor = SurfaceHigh,
-            title = { Text(if (untouched) "Log all as planned?" else "Log this session?", color = TextPrimary) },
+            title = {
+                Text(
+                    if (editing) "Save changes?"
+                    else if (untouched) "Log all as planned?"
+                    else "Log this session?",
+                    color = TextPrimary,
+                )
+            },
             text = {
                 Column {
-                    if (untouched) {
+                    if (untouched && !editing) {
                         Text(
                             "Nothing was changed, so every set will be recorded as completed.",
                             color = TextSecondary,
@@ -198,7 +248,13 @@ fun ScreenSession(vm: AppState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SessionTopBar(s: Session, onBack: () -> Unit, onAllAsPlanned: () -> Unit, onNote: () -> Unit) {
+private fun SessionTopBar(
+    s: Session,
+    editing: Boolean,
+    onBack: () -> Unit,
+    onAllAsPlanned: () -> Unit,
+    onNote: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().background(SurfaceColor).padding(horizontal = 10.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -209,7 +265,11 @@ private fun SessionTopBar(s: Session, onBack: () -> Unit, onAllAsPlanned: () -> 
         ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = TextSecondary) }
 
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
-            Text("Day ${s.dayLabel ?: ""}", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+            Text(
+                if (editing) "Editing · Day ${s.dayLabel ?: ""}" else "Day ${s.dayLabel ?: ""}",
+                style = MaterialTheme.typography.titleLarge,
+                color = if (editing) Short else TextPrimary,
+            )
             Text(
                 if (s.notes.isBlank()) Format.longDate(s.date) else "${Format.longDate(s.date)} · ${s.notes}",
                 style = MaterialTheme.typography.bodyMedium,

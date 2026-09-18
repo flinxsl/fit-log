@@ -98,10 +98,20 @@ fun ScreenHome(vm: AppState, modifier: Modifier = Modifier) {
 
         if (vm.log.openReviewCount > 0) {
             item {
-                Text(
-                    "${vm.log.openReviewCount} imported entries still need review",
-                    style = MaterialTheme.typography.bodyMedium, color = Short,
-                )
+                Surface(
+                    color = Short.copy(alpha = 0.15f), shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .clickable { vm.go(Screen.Review) },
+                ) {
+                    Row(
+                        Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${vm.log.openReviewCount} entries need review",
+                            style = MaterialTheme.typography.titleMedium, color = Short)
+                        Text("resolve  ›", style = MaterialTheme.typography.bodyMedium, color = Short)
+                    }
+                }
             }
         }
     }
