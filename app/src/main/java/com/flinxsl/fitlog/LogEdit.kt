@@ -48,6 +48,9 @@ object LogEdit {
             "heavy", "light" -> setTrack(log, line, optionId)
             "none" -> setTrack(log, line, null)
             "unknown" -> markUnknown(log, line)
+            // The card offers to keep the date as originally written, so it has to
+            // actually do that. The original is recoverable from the verbatim line.
+            "revert" -> revertDate(log, line, item.sourceRaw)
             else -> log
         }
         return withData.copy(review = withData.review.map {
@@ -87,6 +90,21 @@ object LogEdit {
                 if (e.source?.line != line) e
                 else e.copy(sets = emptyList(), excludeFromPr = true, needsReview = false)
             })
+        })
+    }
+
+    /**
+     * Restore the date exactly as it was written, undoing a DATE_FIXES correction.
+     * Returns the log unchanged if the line does not start with a parseable date,
+     * rather than guessing.
+     */
+    fun revertDate(log: FitLog, line: Int?, sourceRaw: String): FitLog {
+        if (line == null) return log
+        val m = Regex("""^(\d{1,2})/(\d{1,2})/(\d{2})""").find(sourceRaw.trim()) ?: return log
+        val (mo, da, yy) = m.destructured
+        val iso = "20%02d-%02d-%02d".format(yy.toInt(), mo.toInt(), da.toInt())
+        return log.copy(sessions = log.sessions.map { s ->
+            if (s.source?.line != line) s else s.copy(date = iso)
         })
     }
 

@@ -156,6 +156,41 @@ class LogEditTest {
         assertEquals("inferred", out.sessions[0].entries[1].trackOrigin)
     }
 
+    @Test
+    fun `keeping the original date actually reverts it`() {
+        val log = FitLog(
+            sessions = listOf(Session("s", "2026-05-11",
+                source = Source(line = 736, raw = "5/11/24 A"))),
+            review = listOf(ReviewItem("rv-1", "DATE_YEAR_TYPO",
+                sourceLines = listOf(736), sourceRaw = "5/11/24 A")),
+        )
+        val out = LogEdit.resolveReview(log, log.review[0], "revert", today = "2026-09-17")
+        assertEquals("2024-05-11", out.sessions[0].date)
+        assertTrue(out.review[0].resolved)
+    }
+
+    @Test
+    fun `accepting the corrected date leaves it corrected`() {
+        val log = FitLog(
+            sessions = listOf(Session("s", "2026-05-11",
+                source = Source(line = 736, raw = "5/11/24 A"))),
+            review = listOf(ReviewItem("rv-1", "DATE_YEAR_TYPO",
+                sourceLines = listOf(736), sourceRaw = "5/11/24 A")),
+        )
+        val out = LogEdit.resolveReview(log, log.review[0], "accept", today = "2026-09-17")
+        assertEquals("2026-05-11", out.sessions[0].date)
+    }
+
+    @Test
+    fun `reverting a line with no parseable date changes nothing`() {
+        val log = FitLog(
+            sessions = listOf(Session("s", "2026-05-11", source = Source(line = 9, raw = "Dips 12/"))),
+            review = listOf(ReviewItem("rv-1", sourceLines = listOf(9), sourceRaw = "Dips 12/")),
+        )
+        val out = LogEdit.resolveReview(log, log.review[0], "revert", today = "2026-09-17")
+        assertEquals("2026-05-11", out.sessions[0].date)
+    }
+
     // --- against the real corpus --------------------------------------------
 
     @Test
