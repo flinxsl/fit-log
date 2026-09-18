@@ -151,7 +151,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun finishSession() {
         val s = draft ?: return
         val id = editingId
-        update { LogEdit.upsertSession(it, s, id) }
+        update { LogEdit.upsertSession(it, s, id, LocalDate.now().toString()) }
         draft = null
         editingId = null
         draftOriginal = null

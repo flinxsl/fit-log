@@ -12,6 +12,7 @@ import java.io.File
 class LogEditTest {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val TODAY = "2026-09-17"
     private fun corpus(): FitLog? {
         val f = File("../out/fitlog.json")
         return if (f.exists()) json.decodeFromString<FitLog>(f.readText()) else null
@@ -30,14 +31,14 @@ class LogEditTest {
 
     @Test
     fun `a new session is appended`() {
-        val out = LogEdit.upsertSession(base, sess("c", "2026-01-05"), null)
+        val out = LogEdit.upsertSession(base, sess("c", "2026-01-05"), null, TODAY)
         assertEquals(listOf("a", "b", "c"), out.sessions.map { it.id })
     }
 
     @Test
     fun `editing replaces in place and does not duplicate`() {
         val edited = sess("b", "2026-01-03").copy(notes = "felt strong")
-        val out = LogEdit.upsertSession(base, edited, "b")
+        val out = LogEdit.upsertSession(base, edited, "b", TODAY)
         assertEquals(2, out.sessions.size)
         assertEquals(listOf("a", "b"), out.sessions.map { it.id })
         assertEquals("felt strong", out.sessions.first { it.id == "b" }.notes)
@@ -45,14 +46,14 @@ class LogEditTest {
 
     @Test
     fun `editing preserves the order of the log`() {
-        val out = LogEdit.upsertSession(base, sess("a", "2026-01-01").copy(notes = "x"), "a")
+        val out = LogEdit.upsertSession(base, sess("a", "2026-01-01").copy(notes = "x"), "a", TODAY)
         assertEquals(listOf("a", "b"), out.sessions.map { it.id })
     }
 
     @Test
     fun `editing clears the needs-review flag on that session`() {
         val flagged = FitLog(sessions = listOf(sess("a", "2026-01-01").copy(needsReview = true)))
-        val out = LogEdit.upsertSession(flagged, flagged.sessions[0], "a")
+        val out = LogEdit.upsertSession(flagged, flagged.sessions[0], "a", TODAY)
         assertFalse(out.sessions[0].needsReview)
     }
 
@@ -189,6 +190,78 @@ class LogEditTest {
         )
         val out = LogEdit.resolveReview(log, log.review[0], "revert", today = "2026-09-17")
         assertEquals("2026-05-11", out.sessions[0].date)
+    }
+
+    // --- correcting an entry closes its review card -------------------------
+
+    /** A truncated import: the entry exists but has no sets, and is flagged. */
+    private fun truncatedLog() = FitLog(
+        sessions = listOf(Session("s", "2025-12-15", entries = listOf(
+            Entry("squat", 1, sets = listOf(
+                SetRecord(1, Load(LoadKind.BARBELL_TOTAL, 235.0, "lb"), 5.0, 5.0)),
+                source = Source(line = 367, raw = "Squat 235")),
+            Entry("bench", 2, sets = emptyList(), needsReview = true, excludeFromPr = true,
+                source = Source(line = 368, raw = "Bench 180/175 3(-1)/")),
+        ))),
+        review = listOf(
+            ReviewItem("rv-1", "TRUNCATED_LINE", sourceLines = listOf(368)),
+            ReviewItem("rv-2", "TRUNCATED_LINE", sourceLines = listOf(909)),
+        ),
+    )
+
+    @Test
+    fun `filling in a flagged entry closes its card`() {
+        val log = truncatedLog()
+        val fixed = SessionEdit.materialize(
+            log.sessions[0], 1, 5, 5.0, LoadKind.BARBELL_TOTAL, 180.0, "lb", null)
+        val out = LogEdit.upsertSession(log, fixed, "s", TODAY)
+
+        assertTrue("the card for the entry we fixed should close",
+            out.review.first { it.id == "rv-1" }.resolved)
+        assertEquals("edited", out.review.first { it.id == "rv-1" }.resolution?.optionId)
+        assertFalse("the entry should no longer be flagged",
+            out.sessions[0].entries[1].needsReview)
+    }
+
+    @Test
+    fun `a card about a different entry stays open`() {
+        val log = truncatedLog()
+        val fixed = SessionEdit.materialize(
+            log.sessions[0], 1, 5, 5.0, LoadKind.BARBELL_TOTAL, 180.0, "lb", null)
+        val out = LogEdit.upsertSession(log, fixed, "s", TODAY)
+        assertFalse("rv-2 points at line 909, which we did not touch",
+            out.review.first { it.id == "rv-2" }.resolved)
+    }
+
+    @Test
+    fun `saving without changing anything closes nothing`() {
+        val log = truncatedLog()
+        val out = LogEdit.upsertSession(log, log.sessions[0], "s", TODAY)
+        assertFalse(out.review.first { it.id == "rv-1" }.resolved)
+    }
+
+    @Test
+    fun `editing one entry does not dismiss a question about another`() {
+        val log = truncatedLog().let {
+            it.copy(review = it.review + ReviewItem("rv-3", "TRACK_AMBIGUOUS", sourceLines = listOf(367)))
+        }
+        // Change only the bench entry, not the squat one rv-3 asks about.
+        val fixed = SessionEdit.materialize(
+            log.sessions[0], 1, 5, 5.0, LoadKind.BARBELL_TOTAL, 180.0, "lb", null)
+        val out = LogEdit.upsertSession(log, fixed, "s", TODAY)
+        assertTrue(out.review.first { it.id == "rv-1" }.resolved)
+        assertFalse("the squat question is untouched",
+            out.review.first { it.id == "rv-3" }.resolved)
+    }
+
+    @Test
+    fun `correcting a date closes the date card`() {
+        val log = FitLog(
+            sessions = listOf(Session("s", "2026-05-11", source = Source(line = 736, raw = "5/11/24 A"))),
+            review = listOf(ReviewItem("rv-1", "DATE_YEAR_TYPO", sourceLines = listOf(736))),
+        )
+        val out = LogEdit.upsertSession(log, log.sessions[0].copy(date = "2025-05-11"), "s", TODAY)
+        assertTrue(out.review[0].resolved)
     }
 
     // --- against the real corpus --------------------------------------------

@@ -14,14 +14,55 @@ object LogEdit {
      * Add a new session, or replace one already there. The editingId is what
      * makes correcting a past session and logging a new one the same code path.
      */
-    fun upsertSession(log: FitLog, session: Session, editingId: String?): FitLog =
-        if (editingId == null) {
-            log.copy(sessions = log.sessions + session)
-        } else {
-            log.copy(sessions = log.sessions.map {
-                if (it.id == editingId) session.copy(needsReview = false) else it
-            })
-        }
+    fun upsertSession(log: FitLog, session: Session, editingId: String?, today: String): FitLog {
+        if (editingId == null) return log.copy(sessions = log.sessions + session)
+
+        val before = log.sessions.firstOrNull { it.id == editingId }
+        val cleaned = session.copy(
+            needsReview = false,
+            // An entry you have just corrected is no longer flagged.
+            entries = session.entries.map { e ->
+                val was = before?.entries?.firstOrNull { it.source?.line == e.source?.line }
+                if (was != null && was != e) e.copy(needsReview = false) else e
+            },
+        )
+        val withSession = log.copy(sessions = log.sessions.map {
+            if (it.id == editingId) cleaned else it
+        })
+        return if (before == null) withSession
+        else resolveTouched(withSession, before, cleaned, today)
+    }
+
+    /**
+     * Close the review cards for whatever was actually just corrected.
+     *
+     * Fixing an entry and then still being asked about it is the app not
+     * noticing what you did. Only cards pointing at something that genuinely
+     * CHANGED are closed - saving a session for an unrelated reason must not
+     * silently dismiss a question about a different entry in it.
+     */
+    fun resolveTouched(log: FitLog, before: Session, after: Session, today: String): FitLog {
+        val changedLines = after.entries.mapNotNull { e ->
+            val was = before.entries.firstOrNull { it.source?.line == e.source?.line }
+            if (was != null && was != e) e.source?.line else null
+        }.toSet()
+        val dateChanged = before.date != after.date
+        val sessionLine = after.source?.line
+
+        if (changedLines.isEmpty() && !dateChanged) return log
+
+        return log.copy(review = log.review.map { item ->
+            if (item.resolved) return@map item
+            val line = item.sourceLines.firstOrNull() ?: return@map item
+            val hit = line in changedLines || (dateChanged && line == sessionLine)
+            if (!hit) item
+            else item.copy(
+                resolved = true,
+                resolution = ReviewResolution(optionId = "edited", note = "Corrected by hand."),
+                resolvedAt = today,
+            )
+        })
+    }
 
     fun deleteSession(log: FitLog, id: String): FitLog =
         log.copy(sessions = log.sessions.filterNot { it.id == id })
