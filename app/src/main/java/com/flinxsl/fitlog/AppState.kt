@@ -156,8 +156,12 @@ class AppState(app: Application) : AndroidViewModel(app) {
         editingId = null
         draftOriginal = null
         expanded = null
-        screen = Screen.Home
-        backStack.clear()
+        // Return to whatever opened this: Home for a new session, but Review or
+        // History when correcting one, so you carry on where you left off.
+        if (!back()) {
+            screen = Screen.Home
+            backStack.clear()
+        }
     }
 
     // --- editing the draft --------------------------------------------------

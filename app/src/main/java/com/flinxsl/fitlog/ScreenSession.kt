@@ -465,6 +465,7 @@ private fun SetSheet(
     var weight by remember { mutableStateOf(set.load.value ?: 0.0) }
     var writeIn by remember { mutableStateOf(false) }
     var typeWeight by remember { mutableStateOf(false) }
+    var typeReps by remember { mutableStateOf(false) }
     // The real log only ever drops from a set onward, so that is the default.
     var applyToRest by remember { mutableStateOf(true) }
     val lastSet = setIndex == entry.sets.lastIndex
@@ -478,13 +479,33 @@ private fun SetSheet(
         if (set.isTimed) {
             Text("SECONDS", Modifier.padding(top = 18.dp),
                 style = MaterialTheme.typography.labelMedium, color = TextFaint)
-            NumberRow((0..12).map { (set.durationSec ?: 0.0) - 6 + it }.filter { it >= 0 },
-                selected = set.durationSec, onPick = onDuration)
+            NumberRow(
+                (0..12).map { (set.durationSec ?: 0.0) - 6 + it }.filter { it >= 0 },
+                selected = set.durationSec, onPick = onDuration,
+                onType = { typeReps = true },
+            )
         } else {
             Text("REPS", Modifier.padding(top = 18.dp),
                 style = MaterialTheme.typography.labelMedium, color = TextFaint)
-            val top = (target ?: set.reps ?: 8.0).toInt() + 2
-            NumberRow((0..top).map { it.toDouble() }, selected = set.reps, target = target, onPick = onReps)
+            // The presets cover the common cases; the keypad covers everything
+            // else, including a good AMRAP day and half reps.
+            val top = maxOf((target ?: 8.0), set.reps ?: 0.0).toInt() + 2
+            NumberRow(
+                (0..top).map { it.toDouble() }, selected = set.reps, target = target,
+                onPick = onReps, onType = { typeReps = true },
+            )
+        }
+
+        if (typeReps) {
+            NumberDialog(
+                title = if (set.isTimed) "Seconds held" else "Reps on set ${setIndex + 1}",
+                current = if (set.isTimed) (set.durationSec ?: 0.0) else (set.reps ?: 0.0),
+                onDismiss = { typeReps = false },
+                onSet = { v ->
+                    typeReps = false
+                    if (set.isTimed) onDuration(v) else onReps(v)
+                },
+            )
         }
 
         Text("FAILED THE SET", Modifier.padding(top = 22.dp),
@@ -557,15 +578,27 @@ private fun NumberRow(
     selected: Double?,
     target: Double? = null,
     onPick: (Double) -> Unit,
+    onType: () -> Unit,
 ) {
     androidx.compose.foundation.lazy.LazyRow(
         Modifier.padding(top = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item {
+            // Fallback for anything the presets do not cover.
+            Surface(
+                color = Accent.copy(alpha = 0.16f), shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(58.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onType),
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("···", style = MaterialTheme.typography.titleLarge, color = Accent)
+                }
+            }
+        }
         items(options.size) { i ->
             val v = options[i]
             val isTarget = target != null && v == target
-            val isSel = selected != null && v == selected
+            val isSel = selected != null && kotlin.math.abs(v - selected) < 0.001
             Surface(
                 color = when {
                     isSel -> Done.copy(alpha = 0.3f)

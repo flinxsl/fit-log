@@ -198,6 +198,44 @@ class SessionEditTest {
         assertEquals(Attribution.POSITIONAL, s.entries[0].setsAttribution)
     }
 
+    // --- rep values the preset row cannot reach -----------------------------
+
+    @Test
+    fun `reps above the target are accepted and count as complete`() {
+        val o = prefilled()
+        // An AMRAP-ish day: 12 reps on a lift whose target is 5.
+        val s = SessionEdit.reps(o, 0, 0, 12.0)
+        val set = s.entries[0].sets[0]
+        assertEquals(12.0, set.reps!!, 0.001)
+        assertTrue("beating the target is completing it", set.completed)
+        assertEquals("Squat 265 (7/0/0/0/0)", Format.entry(s.entries[0], squat))
+    }
+
+    @Test
+    fun `half reps can be recorded`() {
+        val o = prefilled()
+        val s = SessionEdit.reps(o, 0, 4, 4.5)
+        assertEquals(4.5, s.entries[0].sets[4].reps!!, 0.001)
+        assertEquals("Squat 265 (-0.5)", Format.entry(
+            s.entries[0].copy(setsAttribution = Attribution.UNORDERED), squat))
+    }
+
+    @Test
+    fun `a large bodyweight count is recorded as-is`() {
+        val o = prefilled()
+        val s = SessionEdit.reps(o, 4, 0, 25.0)
+        assertEquals(25.0, s.entries[4].sets[0].reps!!, 0.001)
+        assertEquals("Leg raise 25/12/12", Format.entry(s.entries[4], legRaise))
+    }
+
+    @Test
+    fun `zero reps is not the same as a failed set`() {
+        val o = prefilled()
+        val zero = SessionEdit.reps(o, 0, 0, 0.0).entries[0].sets[0]
+        assertEquals(0.0, zero.reps!!, 0.001)
+        assertFalse("zero reps entered is not an abandoned set", zero.failed)
+    }
+
     // --- filling in an entry the importer left empty ------------------------
 
     @Test
