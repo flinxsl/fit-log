@@ -133,6 +133,7 @@ class Entry:
             "prescription": self.prescription.to_json(),
             "sets": [s.to_json() for s in self.sets],
             "setsAttribution": self.setsAttribution,
+            "progSets": self.progSets,
             "performed": self.performed,
             "failureReason": self.failureReason,
             "notes": self.notes,

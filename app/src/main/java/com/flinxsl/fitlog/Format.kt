@@ -32,6 +32,7 @@ object Format {
      *   non-default count needs writing out as "xN". Pass null to omit that.
      */
     fun entry(e: Entry, ex: Exercise?, progSets: Int? = null): String {
+        val progCount = progSets ?: e.progSets.takeIf { it > 0 }
         val name = ex?.displayName ?: e.exerciseId
         val metric = ex?.metric ?: Metric.WEIGHT_REPS
 
@@ -66,7 +67,7 @@ object Format {
         sb.append(groups.joinToString("/") { num(it.first) })
         if (groups.size > 1) {
             sb.append(' ').append(groups.joinToString("/") { it.second.size.toString() })
-        } else if (progSets != null && e.sets.size != progSets) {
+        } else if (progCount != null && e.sets.size != progCount) {
             sb.append(" x").append(e.sets.size)
         }
 
@@ -112,17 +113,12 @@ object Format {
 
     /** A whole session as it appeared in text_log: date line, then one line per exercise. */
     fun session(s: Session, log: FitLog): List<String> =
-        listOf(sessionHeader(s)) + s.entries.map { entry(it, log.exercise(it.exerciseId), progSets(s, it, log)) }
+        listOf(sessionHeader(s)) + s.entries.map { entry(it, log.exercise(it.exerciseId)) }
 
     /** The entire log in text_log format. Used by the text export. */
     fun all(log: FitLog): String =
         log.sessions.sortedBy { it.date }.joinToString("\n\n") { session(it, log).joinToString("\n") }
 
-    private fun progSets(s: Session, e: Entry, log: FitLog): Int? =
-        log.routines.firstOrNull { it.id == s.routineId }
-            ?.days?.firstOrNull { it.label == (s.dayLabel ?: "-") }
-            ?.slots?.firstOrNull { it.exerciseId == e.exerciseId }
-            ?.sets
 
     // --- human-facing variants, for places the raw notation is too terse -----
 

@@ -188,6 +188,8 @@ data class Entry(
     val prescription: Prescription = Prescription(),
     val sets: List<SetRecord> = emptyList(),
     val setsAttribution: String = Attribution.UNIFORM,
+    /** The program's set count, so rendering never has to consult a routine. */
+    val progSets: Int = 0,
     val performed: Boolean = true,
     val failureReason: String? = null,
     val notes: String = "",
